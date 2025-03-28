@@ -1,0 +1,232 @@
+// FrameProcessor.cpp
+// This file contains the definition of processFrameIteration() function that
+// handles frame waiting, beginning, hand joint location updates, and frame submission.
+#define XR_KHR_composition_layer_color
+#include<glad/glad.h>
+#include <openxr/openxr.h>
+#include <chrono>
+#include <vector>
+#include <iostream>
+#include <cstdlib>
+#include <windows.h>
+#include <GL/gl.h>
+#include "HMD.h"
+#include "HMD_number.h"
+#include "utils.h"
+
+// External global variables required for processing frames.
+// These variables should be defined in a common source file.
+
+
+
+void HMD::processFrameIteration() {
+    // Wait for the next frame using OpenXR.
+    XrFrameWaitInfo frameWaitInfo{ XR_TYPE_FRAME_WAIT_INFO };
+    XrFrameState frameState{ XR_TYPE_FRAME_STATE };
+    XrResult result = xrWaitFrame(xrSession, &frameWaitInfo, &frameState);
+    if (XR_FAILED(result)) {
+        std::cerr << "[error] Failed to wait for frame! Error code: " << result << std::endl;
+        return;
+    }
+
+    // Update the current frame time.
+    xrTime = frameState.predictedDisplayTime;
+
+    // Begin the frame.
+    XrFrameBeginInfo frameBeginInfo{ XR_TYPE_FRAME_BEGIN_INFO };
+    result = xrBeginFrame(xrSession, &frameBeginInfo);
+    if (XR_FAILED(result)) {
+        std::cerr << "[error] Failed to begin frame!" << std::endl;
+        return;
+    }
+
+    XrSpaceLocation hmdLocation{ XR_TYPE_SPACE_LOCATION };
+    XrResult hmdResult = xrLocateSpace(hmdSpace, worldSpace, xrTime, &hmdLocation);
+
+    if (XR_SUCCEEDED(hmdResult) &&
+        (hmdLocation.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) &&
+        (hmdLocation.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
+        
+        // HMD Pose 메시지 생성
+        geometry_msgs::TransformStamped hmdTransform;
+        hmdTransform.header.stamp = ros::Time::now();
+        hmdTransform.header.frame_id = "world";   // 고정 프레임
+        hmdTransform.child_frame_id = "hmd_frame"; // HMD 좌표계
+
+        // 위치 (Position)
+        hmdTransform.transform.translation.x = hmdLocation.pose.position.x;
+        hmdTransform.transform.translation.y = hmdLocation.pose.position.y;
+        hmdTransform.transform.translation.z = hmdLocation.pose.position.z;
+
+        // 방향 설정 (Quaternion)
+        hmdTransform.transform.rotation.x = hmdLocation.pose.orientation.x;
+        hmdTransform.transform.rotation.y = hmdLocation.pose.orientation.y;
+        hmdTransform.transform.rotation.z = hmdLocation.pose.orientation.z;
+        hmdTransform.transform.rotation.w = hmdLocation.pose.orientation.w;
+
+
+        // Publish HMD Pose
+        tf_broadcaster->sendTransform(hmdTransform);
+        
+        std::cout << "HMD Pose Published: (" 
+                  << hmdLocation.pose.position.x << ", " 
+                  << hmdLocation.pose.position.y << ", " 
+                  << hmdLocation.pose.position.z << ")" << std::endl;
+    } else {
+        std::cerr << "[warning] Failed to retrieve valid HMD pose." << std::endl;
+    }
+
+
+    // Retrieve the hand joint locations for both left and right hands.
+    pXRHandTracking->LocateHandJoints(XR_HAND_LEFT_EXT, worldSpace, xrTime, XR_HAND_JOINTS_MOTION_RANGE_CONFORMING_TO_CONTROLLER_EXT);
+    pXRHandTracking->LocateHandJoints(XR_HAND_RIGHT_EXT, worldSpace, xrTime, XR_HAND_JOINTS_MOTION_RANGE_CONFORMING_TO_CONTROLLER_EXT);
+
+
+    // Create PoseArray messages for left and right hand joints.
+    
+    
+    // Set header information (timestamp and frame id)
+    pose_array.header.stamp = ros::Time::now();
+    pose_array.header.frame_id = "hmd_frame";
+
+    
+    int jointnum = size(specific_indices);
+    // Iterate through each hand joint and output their positions.
+    for (int i =0; i< jointnum ;i++) {
+        auto leftHandJoint = pXRHandTracking->GetHandJointLocations(XR_HAND_LEFT_EXT)->jointLocations[i];
+        
+        std::cerr << "Lefthand status : " << leftHandJoint.locationFlags << std::endl;
+    
+
+        auto rightHandJoint = pXRHandTracking->GetHandJointLocations(XR_HAND_RIGHT_EXT)->jointLocations[i];
+        std::cerr << "Righthand status : " << rightHandJoint.locationFlags << std::endl;
+    // Han
+        std::cout << "Left Hand Joint " << i << ": ("
+                  << leftHandJoint.pose.position.x << ", "
+                  << leftHandJoint.pose.position.y << ", "
+                  << leftHandJoint.pose.position.z << ")\n";
+        std::cout << "Right Hand Joint " << i << ": ("
+                  << rightHandJoint.pose.position.x << ", "
+                  << rightHandJoint.pose.position.y << ", "
+                  << rightHandJoint.pose.position.z << ")\n";
+        
+
+        if (leftHandJoint.locationFlags == 15)
+        {
+            std::cout << "Left Hand Joint pub " <<std::endl;
+            geometry_msgs::Pose leftPose;
+            leftPose.position.x = leftHandJoint.pose.position.x;
+            leftPose.position.y = leftHandJoint.pose.position.y;
+            leftPose.position.z = leftHandJoint.pose.position.z;
+            leftPose.orientation.x = leftHandJoint.pose.orientation.x;
+            leftPose.orientation.y = leftHandJoint.pose.orientation.y;
+            leftPose.orientation.z = leftHandJoint.pose.orientation.z;
+            leftPose.orientation.w = leftHandJoint.pose.orientation.w;
+            pose_array.poses[i] = leftPose;
+
+        }
+        
+
+        // Create a Pose message for right hand joint.
+        if (rightHandJoint.locationFlags == 15)
+        {
+            std::cout << "Right Hand Joint pub " <<std::endl;
+            geometry_msgs::Pose rightPose;
+            rightPose.position.x = rightHandJoint.pose.position.x;
+            rightPose.position.y = rightHandJoint.pose.position.y;
+            rightPose.position.z = rightHandJoint.pose.position.z;
+            rightPose.orientation.x = rightHandJoint.pose.orientation.x;
+            rightPose.orientation.y = rightHandJoint.pose.orientation.y;
+            rightPose.orientation.z = rightHandJoint.pose.orientation.z;
+            rightPose.orientation.w = rightHandJoint.pose.orientation.w;
+            pose_array.poses[i+jointnum] = rightPose;
+        }
+        
+    }
+
+    hand_pose_pub.publish(pose_array);
+    
+    
+    // If hand joints rendering is disabled, output a message.
+    
+
+    // Submit the rendered frame.
+    RenderSubmitFrame(frameState);
+    
+    // Sleep to simulate frame time (1000 milliseconds).
+    std::this_thread::sleep_for(std::chrono::milliseconds(16));
+}
+
+
+
+void HMD::RenderSubmitFrame(const XrFrameState& frameState) {
+    auto startTime = std::chrono::steady_clock::now();
+
+    float elapsed = std::chrono::duration<float>(
+        std::chrono::steady_clock::now() - startTime
+    ).count();
+    bool isGreen = std::fmod(elapsed, 60.0f) < 30.0f;
+    
+    // RenderSwapchainFrame(xrSwapchain, frameState, xrSpace, width, height, hDC);
+    uint32_t imageIndex;
+    XrSwapchainImageAcquireInfo acquireInfo{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+    xrAcquireSwapchainImage(xrSwapchain, &acquireInfo, &imageIndex);
+    
+
+    XrSwapchainImageWaitInfo waitInfo{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+    waitInfo.timeout = XR_INFINITE_DURATION;
+    xrWaitSwapchainImage(xrSwapchain, &waitInfo);
+    
+
+    // Bind the swapchain texture to an FBO and clear to a solid color
+    static GLuint colorFBO = 0;
+    if (colorFBO == 0) {
+        glGenFramebuffers(1, &colorFBO);
+    }
+    
+    GLuint tex = swapchainImages[imageIndex].image;
+    glBindFramebuffer(GL_FRAMEBUFFER, colorFBO);
+   
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "[error] Incomplete FBO\n";
+    }
+    
+    width , height = HMDVariable::GL_VIEW_WIDTH , HMDVariable::GL_VIEW_HEIGHT;
+    glViewport(0, 0, width, height);
+    glClearColor(0.0f, 1.0f, 0.0f, 1.0f); // green
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    
+    XrSwapchainImageReleaseInfo releaseInfo{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    xrReleaseSwapchainImage(xrSwapchain, &releaseInfo);
+
+    XrCompositionLayerQuad colorLayer{XR_TYPE_COMPOSITION_LAYER_QUAD};
+        colorLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+        colorLayer.space = worldSpace;
+        colorLayer.pose = { {0, 0, 0, 1}, {0, 0, -2} }; // 화면 앞 2m 위치
+        colorLayer.size = {4.0f, 4.0f}; // 4m x 4m 크기
+        colorLayer.subImage.imageArrayIndex = 0;
+        colorLayer.subImage.swapchain = xrSwapchain;
+        colorLayer.subImage.imageArrayIndex = 0;
+        colorLayer.subImage.imageRect.offset = {0, 0};
+        colorLayer.subImage.imageRect.extent = { 1024, 1024 };
+
+    
+    XrCompositionLayerBaseHeader* layers[] = {
+        reinterpret_cast<XrCompositionLayerBaseHeader*>(&colorLayer)
+    };
+
+    XrFrameEndInfo frameEndInfo{XR_TYPE_FRAME_END_INFO};
+    frameEndInfo.displayTime = frameState.predictedDisplayTime;
+    frameEndInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+    frameEndInfo.layerCount = 1;
+    frameEndInfo.layers = layers;
+    XrResult result = xrEndFrame(xrSession, &frameEndInfo);
+    if (XR_FAILED(result)) {
+        std::cerr << "[error] xrEndFrame, Error code: " << result << std::endl;
+        return;
+    }
+
+}
