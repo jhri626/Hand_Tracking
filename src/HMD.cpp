@@ -47,6 +47,8 @@ HMD::HMD(int arc, char *arv[])
     std::vector<XrSwapchainImageOpenGLKHR> swapchainImages;
 
     // For frame
+    cv::Mat latestImage;             // Stores the latest image from ROS
+    std::mutex imageMutex;           // Mutex to protect access to latestImage
 
 }
 
@@ -66,6 +68,7 @@ int HMD::init()
     ros::NodeHandle nh;
     // Create a publisher for PoseArray messages on the "hand_joints" topic.
     hand_pose_pub = nh.advertise<geometry_msgs::PoseArray>("hand_joints", 1);
+    ros::Subscriber imageSub = nh.subscribe("usb_cam/image_raw", 1, &HMD::imageCallback, this);
 
     tf_broadcaster = new tf2_ros::TransformBroadcaster();
 

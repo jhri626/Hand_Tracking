@@ -182,6 +182,20 @@ void HMD::processFrameIteration() {
     std::this_thread::sleep_for(std::chrono::milliseconds(16));
 }
 
+void HMD::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
+    try {
+        // Convert ROS image message to OpenCV Mat in BGR format
+        cv::Mat img = cv_bridge::toCvShare(msg, "bgr8")->image;
+        // Convert image from BGR to RGB
+        cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
+        // Lock mutex and update the shared image
+        std::lock_guard<std::mutex> lock(imageMutex);
+        latestImage = img.clone();
+    } catch (cv_bridge::Exception& e) {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+    }
+}
+
 
 
 void HMD::RenderSubmitFrame(const XrFrameState& frameState) {
@@ -218,11 +232,28 @@ void HMD::RenderSubmitFrame(const XrFrameState& frameState) {
     }
     
     width , height = HMDVariable::GL_VIEW_WIDTH , HMDVariable::GL_VIEW_HEIGHT;
-    glViewport(0, 0, width, height);
-    glClearColor(0.0f, 1.0f, 0.0f, 1.0f); // green
-    glClear(GL_COLOR_BUFFER_BIT);
+    // glViewport(0, 0, width, height);
+    // glClearColor(0.0f, 1.0f, 0.0f, 1.0f); // green
+    // glClear(GL_COLOR_BUFFER_BIT);
+
+    {
+        std::lock_guard<std::mutex> lock(imageMutex);
+        if (!latestImage.empty()) {
+            // 만약 swapchain 텍스처의 크기가 latestImage와 다르다면, 초기화 시 glTexImage2D로 재설정 필요
+            // 아래 예시는 텍스처 크기가 latestImage.cols x latestImage.rows라고 가정
+            glBindTexture(GL_TEXTURE_2D, tex);
+            // Update the texture with the latest webcam image
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, latestImage.cols, latestImage.rows, GL_RGB, GL_UNSIGNED_BYTE, latestImage.data);
+        } else {
+            // 이미지가 없으면 기본 색상 클리어 (또는 별도 처리)
+            glClearColor(0.0f, 1.0f, 0.0f, 1.0f); // green as fallback
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+    }
+
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+    
     
     XrSwapchainImageReleaseInfo releaseInfo{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
     xrReleaseSwapchainImage(xrSwapchain, &releaseInfo);

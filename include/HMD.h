@@ -45,6 +45,7 @@ public:
     bool CreateSwapchain();
     void processFrameIteration();
     void RenderSubmitFrame(const XrFrameState& frameState);
+    void imageCallback(const sensor_msgs::ImageConstPtr& msg);
     
 
 private:
@@ -73,6 +74,8 @@ private:
 
     // gl
     int32_t width, height;
+    cv::Mat latestImage;             // Stores the latest image from ROS
+    std::mutex imageMutex;           // Mutex to protect access to latestImage
 
     // ROS
     int                                argc_;
