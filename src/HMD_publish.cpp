@@ -68,10 +68,10 @@ void HMD::processFrameIteration() {
         // Publish HMD Pose
         tf_broadcaster->sendTransform(hmdTransform);
         
-        std::cout << "HMD Pose Published: (" 
-                  << hmdLocation.pose.position.x << ", " 
-                  << hmdLocation.pose.position.y << ", " 
-                  << hmdLocation.pose.position.z << ")" << std::endl;
+        // std::cout << "HMD Pose Published: (" 
+        //           << hmdLocation.pose.position.x << ", " 
+        //           << hmdLocation.pose.position.y << ", " 
+        //           << hmdLocation.pose.position.z << ")" << std::endl;
     } else {
         std::cerr << "[warning] Failed to retrieve valid HMD pose." << std::endl;
     }
@@ -85,6 +85,18 @@ void HMD::processFrameIteration() {
     // Create PoseArray messages for left and right hand joints.
     
     
+    int list[8] = {
+        XR_HAND_JOINT_THUMB_METACARPAL_EXT,
+        XR_HAND_JOINT_THUMB_DISTAL_EXT,
+        XR_HAND_JOINT_INDEX_METACARPAL_EXT,
+        XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT ,
+        XR_HAND_JOINT_MIDDLE_METACARPAL_EXT ,
+        XR_HAND_JOINT_MIDDLE_INTERMEDIATE_EXT,
+        XR_HAND_JOINT_RING_METACARPAL_EXT ,
+        XR_HAND_JOINT_RING_INTERMEDIATE_EXT ,
+    };
+
+
     // Set header information (timestamp and frame id)
     pose_array.header.stamp = ros::Time::now();
     pose_array.header.frame_id = "hmd_frame";
@@ -92,28 +104,28 @@ void HMD::processFrameIteration() {
     
     int jointnum = size(specific_indices);
     // Iterate through each hand joint and output their positions.
-    for (int i =0; i< jointnum ;i++) {
-        auto leftHandJoint = pXRHandTracking->GetHandJointLocations(XR_HAND_LEFT_EXT)->jointLocations[i];
-        
-        std::cerr << "Lefthand status : " << leftHandJoint.locationFlags << std::endl;
+    // for (int i =0; i< jointnum ;i++) {
+    for (int i =0; i< 8 ;i++) {
+        auto leftHandJoint = pXRHandTracking->GetHandJointLocations(XR_HAND_LEFT_EXT)->jointLocations[list[i]]; // fix after debug
+        // std::cerr << "Lefthand status : " << leftHandJoint.locationFlags << std::endl;
     
 
-        auto rightHandJoint = pXRHandTracking->GetHandJointLocations(XR_HAND_RIGHT_EXT)->jointLocations[i];
-        std::cerr << "Righthand status : " << rightHandJoint.locationFlags << std::endl;
+        auto rightHandJoint = pXRHandTracking->GetHandJointLocations(XR_HAND_RIGHT_EXT)->jointLocations[list[i]]; // fix after debug
+        // std::cerr << "Righthand status : " << rightHandJoint.locationFlags << std::endl;
     // Han
-        std::cout << "Left Hand Joint " << i << ": ("
-                  << leftHandJoint.pose.position.x << ", "
-                  << leftHandJoint.pose.position.y << ", "
-                  << leftHandJoint.pose.position.z << ")\n";
-        std::cout << "Right Hand Joint " << i << ": ("
-                  << rightHandJoint.pose.position.x << ", "
-                  << rightHandJoint.pose.position.y << ", "
-                  << rightHandJoint.pose.position.z << ")\n";
+        // std::cout << "Left Hand Joint " << i << ": ("
+        //           << leftHandJoint.pose.position.x << ", "
+        //           << leftHandJoint.pose.position.y << ", "
+        //           << leftHandJoint.pose.position.z << ")\n";
+        // std::cout << "Right Hand Joint " << i << ": ("
+        //           << rightHandJoint.pose.position.x << ", "
+        //           << rightHandJoint.pose.position.y << ", "
+        //           << rightHandJoint.pose.position.z << ")\n";
         
 
         if (leftHandJoint.locationFlags == 15)
         {
-            std::cout << "Left Hand Joint pub " <<std::endl;
+            // std::cout << "Left Hand Joint pub " <<std::endl;
             geometry_msgs::Pose leftPose;
             leftPose.position.x = leftHandJoint.pose.position.x;
             leftPose.position.y = leftHandJoint.pose.position.y;
@@ -130,7 +142,7 @@ void HMD::processFrameIteration() {
         // Create a Pose message for right hand joint.
         if (rightHandJoint.locationFlags == 15)
         {
-            std::cout << "Right Hand Joint pub " <<std::endl;
+            // std::cout << "Right Hand Joint pub " <<std::endl;
             geometry_msgs::Pose rightPose;
             rightPose.position.x = rightHandJoint.pose.position.x;
             rightPose.position.y = rightHandJoint.pose.position.y;
@@ -139,12 +151,26 @@ void HMD::processFrameIteration() {
             rightPose.orientation.y = rightHandJoint.pose.orientation.y;
             rightPose.orientation.z = rightHandJoint.pose.orientation.z;
             rightPose.orientation.w = rightHandJoint.pose.orientation.w;
-            pose_array.poses[i+jointnum] = rightPose;
+            // pose_array.poses[i+jointnum] = rightPose;
         }
         
     }
 
+    
+    for (int i =0; i< 4 ;i++)
+    {
+        geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[2*i], pose_array.poses[2*i+1]);
+        std::cout << "Euler angles (degrees): " <<i+1<< std::endl;
+        std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
+                << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
+                << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
+        }
+    
+    
+
     hand_pose_pub.publish(pose_array);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::cout << "\033[2J\033[H";
     
     
     // If hand joints rendering is disabled, output a message.

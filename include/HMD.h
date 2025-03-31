@@ -17,9 +17,11 @@
 #include <geometry_msgs/PoseArray.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <std_msgs/Float32MultiArray.h>
+#include <geometry_msgs/Vector3.h>
 #include <std_msgs/Int8.h>
 #include "HMD_number.h"
 #include "utils.h"
+#include "pose_utils.h"
 
 /// @brief Creates a Win32 window suitable for an OpenGL rendering context.
 /// @param[out] hWnd Reference to an HWND which will be initialized on success.

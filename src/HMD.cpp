@@ -121,7 +121,7 @@ void HMD::rospublish()
         ros::spinOnce();  // 콜백 처리
         loop_rate.sleep(); // 주기 유지
         if (!bDrawHandJoints) {
-            std::cout << "Hand joints rendering stopped." << std::endl;
+            // std::cout << "Hand joints rendering stopped." << std::endl;
         }
 
         
