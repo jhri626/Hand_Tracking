@@ -104,13 +104,12 @@ void HMD::processFrameIteration() {
     
     int jointnum = size(specific_indices);
     // Iterate through each hand joint and output their positions.
-    // for (int i =0; i< jointnum ;i++) {
-    for (int i =0; i< 8 ;i++) {
-        auto leftHandJoint = pXRHandTracking->GetHandJointLocations(XR_HAND_LEFT_EXT)->jointLocations[list[i]]; // fix after debug
+    for (int i =0; i< jointnum ;i++) {
+        auto leftHandJoint = pXRHandTracking->GetHandJointLocations(XR_HAND_LEFT_EXT)->jointLocations[i]; // fix after debug
         // std::cerr << "Lefthand status : " << leftHandJoint.locationFlags << std::endl;
     
 
-        auto rightHandJoint = pXRHandTracking->GetHandJointLocations(XR_HAND_RIGHT_EXT)->jointLocations[list[i]]; // fix after debug
+        auto rightHandJoint = pXRHandTracking->GetHandJointLocations(XR_HAND_RIGHT_EXT)->jointLocations[i]; // fix after debug
         // std::cerr << "Righthand status : " << rightHandJoint.locationFlags << std::endl;
     // Han
         // std::cout << "Left Hand Joint " << i << ": ("
@@ -159,7 +158,7 @@ void HMD::processFrameIteration() {
     
     for (int i =0; i< 4 ;i++)
     {
-        geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[2*i], pose_array.poses[2*i+1]);
+        geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*i]], pose_array.poses[list[2*i+1]]);
         std::cout << "Euler angles (degrees): " <<i+1<< std::endl;
         std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
                 << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
