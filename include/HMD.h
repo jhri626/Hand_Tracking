@@ -81,6 +81,7 @@ private:
     int                                argc_;
     char**                             argv_;
     ros::Publisher                     hand_pose_pub;
+    ros::Subscriber                    imageSub;
     tf2_ros::TransformBroadcaster*     tf_broadcaster{ nullptr };
     geometry_msgs::PoseArray           pose_array;
     std::vector<int>                   specific_indices = kSpecificIndices;

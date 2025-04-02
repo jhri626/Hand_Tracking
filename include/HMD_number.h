@@ -5,7 +5,7 @@ namespace HMDVariable {
     inline constexpr int GL_VIEW_WIDTH           = 500;
     inline constexpr int GL_VIEW_HEIGHT           = 500;
     inline constexpr int SWAPCHAIN_WIDTH           = 1024;
-    inline constexpr int SWAPCHAIN_HEIGHT           = 1024;
+    inline constexpr int SWAPCHAIN_HEIGHT           = 768;
     
 }
 

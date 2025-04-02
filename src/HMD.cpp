@@ -64,11 +64,13 @@ HMD::~HMD()
 
 int HMD::init()
 {   
+    std::cerr << "[Info] Init system" << std::endl;
     ros::init(argc_, this->argv_, "openxr_hand_tracking_node");
+    std::cerr << "[Info] Ros init" << std::endl;
     ros::NodeHandle nh;
     // Create a publisher for PoseArray messages on the "hand_joints" topic.
     hand_pose_pub = nh.advertise<geometry_msgs::PoseArray>("hand_joints", 1);
-    ros::Subscriber imageSub = nh.subscribe("usb_cam/image_raw", 1, &HMD::imageCallback, this);
+    imageSub = nh.subscribe("camera/image_raw", 1, &HMD::imageCallback, this);
 
     tf_broadcaster = new tf2_ros::TransformBroadcaster();
 
@@ -119,9 +121,9 @@ void HMD::rospublish()
     ros::Rate loop_rate(60);
     while (ros::ok()) { 
 
+        ros::spinOnce();  // 콜백 처리
         processFrameIteration(); 
         // std::this_thread::sleep_for(std::chrono::milliseconds(16)); 
-        ros::spinOnce();  // 콜백 처리
         loop_rate.sleep(); // 주기 유지
         if (!bDrawHandJoints) {
             // std::cout << "Hand joints rendering stopped." << std::endl;
