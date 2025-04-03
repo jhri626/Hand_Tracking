@@ -99,7 +99,7 @@ void HMD::processFrameIteration() {
 
     // Set header information (timestamp and frame id)
     pose_array.header.stamp = ros::Time::now();
-    pose_array.header.frame_id = "hmd_frame";
+    pose_array.header.frame_id = "world";
 
     
     int jointnum = size(specific_indices);
@@ -159,17 +159,17 @@ void HMD::processFrameIteration() {
     for (int i =0; i< 4 ;i++)
     {
         geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*i]], pose_array.poses[list[2*i+1]]);
-        // std::cout << "Euler angles (degrees): " <<i+1<< std::endl;
-        // std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
-        //         << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
-        //         << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
+        std::cout << "Euler angles (degrees): " <<i+1<< std::endl;
+        std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
+                << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
+                << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
         }
     
     
 
     hand_pose_pub.publish(pose_array);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    // std::cout << "\033[2J\033[H";
+    std::cout << "\033[2J\033[H";
     
     
     // If hand joints rendering is disabled, output a message.
@@ -202,12 +202,12 @@ void HMD::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
 
 
 void HMD::RenderSubmitFrame(const XrFrameState& frameState) {
-    auto startTime = std::chrono::steady_clock::now();
+    // auto startTime = std::chrono::steady_clock::now();
 
-    float elapsed = std::chrono::duration<float>(
-        std::chrono::steady_clock::now() - startTime
-    ).count();
-    bool isGreen = std::fmod(elapsed, 60.0f) < 30.0f;
+    // float elapsed = std::chrono::duration<float>(
+    //     std::chrono::steady_clock::now() - startTime
+    // ).count();
+    // bool isGreen = std::fmod(elapsed, 60.0f) < 30.0f;
     
     // RenderSwapchainFrame(xrSwapchain, frameState, xrSpace, width, height, hDC);
     uint32_t imageIndex;
@@ -251,7 +251,7 @@ void HMD::RenderSubmitFrame(const XrFrameState& frameState) {
             // 이미지가 없으면 기본 색상 클리어 (또는 별도 처리)
             glClearColor(0.0f, 1.0f, 0.0f, 1.0f); // green as fallback
             glClear(GL_COLOR_BUFFER_BIT);
-            std::cerr << "[error] no image"<<std::endl;
+            // std::cerr << "[error] no image"<<std::endl;
         }
     }
 
@@ -264,8 +264,8 @@ void HMD::RenderSubmitFrame(const XrFrameState& frameState) {
 
     XrCompositionLayerQuad colorLayer{XR_TYPE_COMPOSITION_LAYER_QUAD};
         colorLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
-        colorLayer.space = worldSpace;
-        colorLayer.pose = { {0, 0, 0, 1}, {0, 0, -5} }; // 화면 앞 2m 위치
+        colorLayer.space = hmdSpace;
+        colorLayer.pose = { {0, 0, 0, 1}, {0, 0, -5} }; // 화면 앞 5m 위치
         colorLayer.size = {4.0f, 4.0f}; // 4m x 4m 크기
         colorLayer.subImage.imageArrayIndex = 0;
         colorLayer.subImage.swapchain = xrSwapchain;
