@@ -86,8 +86,6 @@ namespace pose_utils {
         // if(angle_deg > 90) angle_deg = 180.0-angle_deg;
         
         return angle_deg;
-
-
     }
 
     Eigen::Vector2d jointAngle(const geometry_msgs::Pose &pose_meta,const geometry_msgs::Pose &pose_palm,
@@ -131,15 +129,11 @@ namespace pose_utils {
         Eigen::Matrix3d mat = q_meta.normalized().toRotationMatrix();
         Eigen::Vector3d x_axis = mat.col(0);
 
-        // std::cout << "v1 : " << v1
-        //         <<"\nv2 : " << v2
-        //         <<"\nv3 : " << v3 <<std::endl;
+
         Eigen::Vector4d plane = computePlane(v1,v2,palm_position);
         Eigen::Vector3d normal = plane.head<3>();
         Eigen::Vector3d projectionV3 = v3 - v3.dot(normal)*normal;
 
-        // std::cout << "normal : " << normal
-        //         <<"\nproj : " << projectionV3 <<std::endl;
         
         double jointFE = computeAngle(v3,projectionV3);
         double jointAA = computeAngle(projectionV3,v1-v2);
