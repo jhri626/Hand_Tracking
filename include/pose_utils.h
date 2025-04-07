@@ -22,6 +22,13 @@ geometry_msgs::Vector3 poseToEulerAngles(const geometry_msgs::Pose &pose_ref,con
 Eigen::Quaterniond computeRelativeQuaternion(const Eigen::Quaterniond &q_ref,
                                                const Eigen::Quaterniond &q_target);
 
+Eigen::Vector4d computePlane(const Eigen::Vector3d &v1,const Eigen::Vector3d &v2,const Eigen::Vector3d &palm_position);
+
+double computeAngle(const Eigen::Vector3d &v1,const Eigen::Vector3d &v2 );
+
+Eigen::Vector2d jointAngle(const geometry_msgs::Pose &pose_meta,const geometry_msgs::Pose &pose_palm,
+    const geometry_msgs::Pose &pose_proxi,const geometry_msgs::Pose &pose_inter);
+
 } // namespace pose_utils
 
 #endif // POSE_UTILS_H

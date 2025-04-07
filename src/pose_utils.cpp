@@ -60,38 +60,110 @@ namespace pose_utils {
     return q_ref.conjugate() * q_target;
     }
 
-    // Eigen::Quaterniond computeNewcord(const geometry_msgs::Pose &pose_wrist,const geometry_msgs::Pose &pose_target,const geometry_msgs::Pose &pose_palm) {
-    //     Eigen::Vector3d wrist_position(
-    //         pose_wrist.position.x,
-    //         pose_wrist.position.y,
-    //         pose_wrist.position.z
-    //     );  
+    Eigen::Vector4d computePlane(const Eigen::Vector3d &v1,const Eigen::Vector3d &v2,const Eigen::Vector3d &palm_position) {
 
-    //     Eigen::Quaterniond q_wrist(
-    //         pose_wrist.orientation.w,
-    //         pose_wrist.orientation.x,
-    //         pose_wrist.orientation.y,
-    //         pose_wrist.orientation.z
-    //     );
+        Eigen::Vector3d normal = v1.cross(v2);
+        normal.normalize(); // Optional: normalize the normal vector
 
-    //     Eigen::Vector3d target_position(
-    //         pose_target.position.x,
-    //         pose_target.position.y,
-    //         pose_target.position.z
-    //     );
+        double D = -normal.dot(palm_position);
 
-    //     Eigen::Vector3d palm_position(
-    //         pose_palm.position.x,
-    //         pose_palm.position.y,
-    //         pose_palm.position.z
-    //     );
+        Eigen::Vector4d plane;
+        plane << normal, D;
+        return plane;
+    }
 
+    double computeAngle(const Eigen::Vector3d &v1,const Eigen::Vector3d &v2 )
+    {
+        Eigen::Vector3d u1 = v1.normalized();
+        Eigen::Vector3d u2 = v2.normalized();
+        double dot = u1.dot(u2);
+        dot = std::min(1.0, std::max(-1.0, dot));
+        double angle_rad = std::acos(dot);
 
-    //     Eigen::Vector3d z_axis = (wrist_position - target_position).normalized();
-    //     // Eigen::Vector3d z_axis = (wrist_position - target_position).normalized();
+        // Optional: convert to degrees
+        double angle_deg = angle_rad * 180.0 / M_PI;
+        // TODO: fix this part angle could be negative value
+        // if(angle_deg > 90) angle_deg = 180.0-angle_deg;
+        
+        return angle_deg;
 
 
+    }
 
-    // }
+    Eigen::Vector2d jointAngle(const geometry_msgs::Pose &pose_meta,const geometry_msgs::Pose &pose_palm,
+        const geometry_msgs::Pose &pose_proxi,const geometry_msgs::Pose &pose_inter)
+    {
+        Eigen::Vector3d meta_position(
+            pose_meta.position.x,
+            pose_meta.position.y,
+            pose_meta.position.z
+        );  
+
+        Eigen::Vector3d palm_position(
+            pose_palm.position.x,
+            pose_palm.position.y,
+            pose_palm.position.z
+        );
+
+        Eigen::Vector3d proxi_position(
+            pose_proxi.position.x,
+            pose_proxi.position.y,
+            pose_proxi.position.z
+        );
+
+        Eigen::Vector3d inter_position(
+            pose_inter.position.x,
+            pose_inter.position.y,
+            pose_inter.position.z
+        );  
+
+        Eigen::Vector3d v1 = proxi_position - palm_position;
+        Eigen::Vector3d v2 = meta_position - palm_position;
+        Eigen::Vector3d v3 = inter_position - proxi_position;
+
+        Eigen::Quaterniond q_meta(
+            pose_meta.orientation.w,
+            pose_meta.orientation.x,
+            pose_meta.orientation.y,
+            pose_meta.orientation.z
+        );
+
+        Eigen::Matrix3d mat = q_meta.normalized().toRotationMatrix();
+        Eigen::Vector3d x_axis = mat.col(0);
+
+        // std::cout << "v1 : " << v1
+        //         <<"\nv2 : " << v2
+        //         <<"\nv3 : " << v3 <<std::endl;
+        Eigen::Vector4d plane = computePlane(v1,v2,palm_position);
+        Eigen::Vector3d normal = plane.head<3>();
+        Eigen::Vector3d projectionV3 = v3 - v3.dot(normal)*normal;
+
+        // std::cout << "normal : " << normal
+        //         <<"\nproj : " << projectionV3 <<std::endl;
+        
+        double jointFE = computeAngle(v3,projectionV3);
+        double jointAA = computeAngle(projectionV3,v1-v2);
+
+        if(v3.dot(v1-v2)<0)
+        {
+            std::cout<<"reverse"<<std::endl;
+            jointFE = 90 + jointFE;
+            jointAA = 180 - jointAA ;
+        } // heuistic way
+
+        if (x_axis.dot(v3)<0)
+        {
+            jointAA = -jointAA;
+        }
+
+        Eigen::Vector2d angle(
+            jointFE,
+            jointAA
+        );
+        
+        return angle;
+    }
+
+
 
 }
