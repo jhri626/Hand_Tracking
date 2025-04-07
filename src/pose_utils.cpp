@@ -59,4 +59,39 @@ namespace pose_utils {
     // The relative quaternion is computed as: q_relative = q_ref^{-1} * q_target.
     return q_ref.conjugate() * q_target;
     }
+
+    // Eigen::Quaterniond computeNewcord(const geometry_msgs::Pose &pose_wrist,const geometry_msgs::Pose &pose_target,const geometry_msgs::Pose &pose_palm) {
+    //     Eigen::Vector3d wrist_position(
+    //         pose_wrist.position.x,
+    //         pose_wrist.position.y,
+    //         pose_wrist.position.z
+    //     );  
+
+    //     Eigen::Quaterniond q_wrist(
+    //         pose_wrist.orientation.w,
+    //         pose_wrist.orientation.x,
+    //         pose_wrist.orientation.y,
+    //         pose_wrist.orientation.z
+    //     );
+
+    //     Eigen::Vector3d target_position(
+    //         pose_target.position.x,
+    //         pose_target.position.y,
+    //         pose_target.position.z
+    //     );
+
+    //     Eigen::Vector3d palm_position(
+    //         pose_palm.position.x,
+    //         pose_palm.position.y,
+    //         pose_palm.position.z
+    //     );
+
+
+    //     Eigen::Vector3d z_axis = (wrist_position - target_position).normalized();
+    //     // Eigen::Vector3d z_axis = (wrist_position - target_position).normalized();
+
+
+
+    // }
+
 }

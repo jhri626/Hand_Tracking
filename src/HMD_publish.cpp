@@ -86,7 +86,7 @@ void HMD::processFrameIteration() {
     
     
     int list[8] = {
-        XR_HAND_JOINT_THUMB_METACARPAL_EXT,
+        XR_HAND_JOINT_WRIST_EXT,
         XR_HAND_JOINT_THUMB_DISTAL_EXT,
         XR_HAND_JOINT_INDEX_METACARPAL_EXT,
         XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT ,
@@ -104,7 +104,7 @@ void HMD::processFrameIteration() {
     
     int jointnum = size(specific_indices);
     // Iterate through each hand joint and output their positions.
-    for (int i =0; i< jointnum ;i++) {
+    for (const auto& i : kSpecificIndices) {
         auto leftHandJoint = pXRHandTracking->GetHandJointLocations(XR_HAND_LEFT_EXT)->jointLocations[i]; // fix after debug
         // std::cerr << "Lefthand status : " << leftHandJoint.locationFlags << std::endl;
     
@@ -184,7 +184,7 @@ void HMD::processFrameIteration() {
 
 void HMD::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
 
-    std::cerr << "[Info] image callback active"<<std::endl;
+    // std::cerr << "[Info] image callback active"<<std::endl;
     try {
         // Convert ROS image message to OpenCV Mat in BGR format
         cv::Mat img = cv_bridge::toCvShare(msg, "bgr8")->image;

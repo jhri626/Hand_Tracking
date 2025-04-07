@@ -20,6 +20,9 @@
 HMD::HMD(int arc, char *arv[])
 {
 
+    argc_= arc;
+    argv_= arv;
+
     OpenXRProvider::XRExtHandTracking* pXRHandTracking = nullptr;
     std::shared_ptr<spdlog::logger> pLogger = spdlog::default_logger();
     tf2_ros::TransformBroadcaster* tf_broadcaster;
@@ -64,6 +67,10 @@ HMD::~HMD()
 
 int HMD::init()
 {   
+    if (argc_ < 1 || argv_ == nullptr) {
+        std::cerr << "Invalid command line arguments." << std::endl;
+        return 1;
+    }
     std::cerr << "[Info] Init system" << std::endl;
     ros::init(argc_, this->argv_, "openxr_hand_tracking_node");
     std::cerr << "[Info] Ros init" << std::endl;
