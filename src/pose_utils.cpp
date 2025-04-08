@@ -178,7 +178,7 @@ namespace pose_utils {
         Eigen::Matrix3d mat = q_meta.normalized().toRotationMatrix();
         Eigen::Vector3d x_axis = mat.col(0);
 
-
+        
         Eigen::Vector3d projectionV3 = v3 - v3.dot(normal)*normal;
         
         //////////////////////////////////////////////////////////////////////////////////////////
