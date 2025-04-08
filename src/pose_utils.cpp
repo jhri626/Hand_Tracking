@@ -178,20 +178,20 @@ namespace pose_utils {
         Eigen::Matrix3d mat = q_meta.normalized().toRotationMatrix();
         Eigen::Vector3d x_axis = mat.col(0);
 
-        
+        Eigen::Vector3d v4 = normal.cross(v1);
         Eigen::Vector3d projectionV3 = v3 - v3.dot(normal)*normal;
         
         //////////////////////////////////////////////////////////////////////////////////////////
         pub.publish(vectorToArrowMarker(meta_position, v1, "world", "v1", 1, 1, 0, 0));
         pub.publish(vectorToArrowMarker(proxi_position, v3, "world", "v3", 2, 0, 1, 0));
-        pub.publish(vectorToArrowMarker(proxi_position, projectionV3, "world", "proj_v3", 3, 0, 0, 1));
+        pub.publish(vectorToArrowMarker(proxi_position, v4, "world", "proj_v3", 3, 0, 0, 1));
         //////////////////////////////////////////////////////////////////////////////////////////
 
 
 
         
         double jointFE = computeAngle(v3,projectionV3);
-        double jointAA = computeAngle(projectionV3,v1);
+        double jointAA = 90 - computeAngle(v3,v4);
 
         if(v3.dot(v1)<0)
         {
@@ -200,10 +200,10 @@ namespace pose_utils {
             jointAA = 180 - jointAA ;
         } // heuistic way
 
-        if (x_axis.dot(v3)<0)
-        {
-            jointAA = -jointAA;
-        }
+        // if (x_axis.dot(v3)<0)
+        // {
+        //     jointAA = -jointAA;
+        // }
 
         Eigen::Vector2d angle(
             jointFE,

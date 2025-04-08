@@ -164,7 +164,16 @@ void HMD::processFrameIteration() {
         
     }
 
-    
+    Eigen::Quaterniond q_palm(
+        pose_array.poses[0].orientation.w,
+        pose_array.poses[0].orientation.x,
+        pose_array.poses[0].orientation.y,
+        pose_array.poses[0].orientation.z
+    );
+
+    Eigen::Matrix3d mat = q_palm.normalized().toRotationMatrix();
+    Eigen::Vector3d y_axis = mat.col(1);
+
     for (int i =0; i < 1 ;i++)
     {
         geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*i]], pose_array.poses[list[2*i+1]]);
@@ -173,9 +182,7 @@ void HMD::processFrameIteration() {
                 << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
                 << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
 
-        Eigen::Vector3d normal =pose_utils::computePlane(pose_array.poses[6+5*2*i],pose_array.poses[7+5*i],pose_array.poses[22-5*i]);
-
-        Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,normal,pose_array.poses[6+5*2*i],pose_array.poses[7+5*2*i],pose_array.poses[8+5*2*i]);
+        Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[6+5*2*i],pose_array.poses[7+5*2*i],pose_array.poses[8+5*2*i]);
         std::cout << "FE and AA angle"<< std::endl;
         std::cout << "FE: "  << angle.x() 
                 << ", AA: "  << angle.y()  << std::endl;
