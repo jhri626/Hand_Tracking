@@ -1,12 +1,9 @@
 #include <Windows.h>
 #include <glad/glad.h>    
 #include <GL/gl.h>
-
 #include <OpenXRProvider.h>  
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
-    
-
 #include <iostream>
 #include <cstring>
 #include <spdlog/spdlog.h>
@@ -14,6 +11,8 @@
 #include "utils.h"
 #include "HMD.h"
 #include "HMD_number.h"
+
+
 
 
 bool HMD::initSystem() 

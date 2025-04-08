@@ -77,6 +77,8 @@ int HMD::init()
     ros::NodeHandle nh;
     // Create a publisher for PoseArray messages on the "hand_joints" topic.
     hand_pose_pub = nh.advertise<geometry_msgs::PoseArray>("hand_joints", 1);
+    marker_pub = nh.advertise<visualization_msgs::Marker>("visualization_marker", 1); // debug tool
+
     imageSub = nh.subscribe("camera/image_raw", 1, &HMD::imageCallback, this);
 
     tf_broadcaster = new tf2_ros::TransformBroadcaster();

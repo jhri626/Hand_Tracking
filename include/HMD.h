@@ -1,7 +1,5 @@
 #pragma once
-
 #define XR_USE_GRAPHICS_API_OPENGL
-
 #include <Windows.h>
 #include <vector>
 #include <memory>
@@ -9,7 +7,6 @@
 #include <thread>
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
-#include <sensor_msgs/Image.h>
 #include <cv_bridge/cv_bridge.h>
 #include <spdlog/spdlog.h>
 #include <ros/ros.h>
@@ -22,6 +19,10 @@
 #include "HMD_number.h"
 #include "utils.h"
 #include "pose_utils.h"
+#include <visualization_msgs/Marker.h>
+#include <geometry_msgs/Point.h>
+
+
 
 /// @brief Creates a Win32 window suitable for an OpenGL rendering context.
 /// @param[out] hWnd Reference to an HWND which will be initialized on success.
@@ -46,6 +47,13 @@ public:
     void processFrameIteration();
     void RenderSubmitFrame(const XrFrameState& frameState);
     void imageCallback(const sensor_msgs::ImageConstPtr& msg);
+    //debug
+    void publishVector(const Eigen::Vector3d& start,
+        const Eigen::Vector3d& vec,
+        const std::string& ns,
+        int id,
+        float r, float g, float b);
+    
     
 
 private:
@@ -81,8 +89,10 @@ private:
     int                                argc_;
     char**                             argv_;
     ros::Publisher                     hand_pose_pub;
+    ros::Publisher                     marker_pub; //debug tool
     ros::Subscriber                    imageSub;
     tf2_ros::TransformBroadcaster*     tf_broadcaster{ nullptr };
     geometry_msgs::PoseArray           pose_array;
     std::vector<int>                   specific_indices = kSpecificIndices;
+
 };

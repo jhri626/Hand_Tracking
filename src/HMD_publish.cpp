@@ -165,14 +165,17 @@ void HMD::processFrameIteration() {
     }
 
     
-    for (int i =0; i < 2 ;i++)
+    for (int i =0; i < 1 ;i++)
     {
         geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*i]], pose_array.poses[list[2*i+1]]);
         std::cout << "Euler angles (degrees): " <<i+1<< std::endl;
         std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
                 << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
                 << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
-        Eigen::Vector2d angle = pose_utils::jointAngle(pose_array.poses[6+5*2*i],pose_array.poses[0],pose_array.poses[7+5*2*i],pose_array.poses[8+5*2*i]);
+
+        Eigen::Vector3d normal =pose_utils::computePlane(pose_array.poses[6+5*2*i],pose_array.poses[7+5*i],pose_array.poses[22-5*i]);
+
+        Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,normal,pose_array.poses[6+5*2*i],pose_array.poses[7+5*2*i],pose_array.poses[8+5*2*i]);
         std::cout << "FE and AA angle"<< std::endl;
         std::cout << "FE: "  << angle.x() 
                 << ", AA: "  << angle.y()  << std::endl;

@@ -6,6 +6,45 @@
 #include <iostream>
 #include <Eigen/Geometry>
 #include <cmath>
+
+visualization_msgs::Marker vectorToArrowMarker(
+    const Eigen::Vector3d& start,
+    const Eigen::Vector3d& vec,
+    const std::string& frame_id,
+    const std::string& ns,
+    int id,
+    float r, float g, float b
+) {
+    visualization_msgs::Marker arrow;
+    arrow.header.frame_id = frame_id;
+    arrow.header.stamp = ros::Time::now();
+    arrow.ns = ns;
+    arrow.id = id;
+    arrow.type = visualization_msgs::Marker::ARROW;
+    arrow.action = visualization_msgs::Marker::ADD;
+
+    geometry_msgs::Point p_start, p_end;
+    p_start.x = start.x(); p_start.y = start.y(); p_start.z = start.z();
+    p_end.x = start.x() + vec.x();
+    p_end.y = start.y() + vec.y();
+    p_end.z = start.z() + vec.z();
+
+    arrow.points.push_back(p_start);
+    arrow.points.push_back(p_end);
+
+    arrow.scale.x = 0.01;  // shaft diameter
+    arrow.scale.y = 0.02;  // head diameter
+    arrow.scale.z = 0.02;  // head length
+
+    arrow.color.r = r;
+    arrow.color.g = g;
+    arrow.color.b = b;
+    arrow.color.a = 1.0;
+
+    return arrow;
+}
+
+
 namespace pose_utils {
     // Function to convert a geometry_msgs::Pose's quaternion into Euler angles (roll, pitch, yaw)
     geometry_msgs::Vector3 poseToEulerAngles(const geometry_msgs::Pose &pose_ref,const geometry_msgs::Pose &pose_target) {
@@ -60,16 +99,34 @@ namespace pose_utils {
     return q_ref.conjugate() * q_target;
     }
 
-    Eigen::Vector4d computePlane(const Eigen::Vector3d &v1,const Eigen::Vector3d &v2,const Eigen::Vector3d &palm_position) {
+    Eigen::Vector3d computePlane(const geometry_msgs::Pose &pose_meta, const geometry_msgs::Pose &pose_proxi_1,const geometry_msgs::Pose &pose_proxi_2) 
+    {
+        
+        Eigen::Vector3d meta_position(
+            pose_meta.position.x,
+            pose_meta.position.y,
+            pose_meta.position.z
+        );  
 
-        Eigen::Vector3d normal = v1.cross(v2);
+        Eigen::Vector3d proxi_position_1(
+            pose_proxi_1.position.x,
+            pose_proxi_1.position.y,
+            pose_proxi_1.position.z
+        );
+
+        Eigen::Vector3d proxi_position_2(
+            pose_proxi_2.position.x,
+            pose_proxi_2.position.y,
+            pose_proxi_2.position.z
+        );
+
+        Eigen::Vector3d v1 = proxi_position_1 - meta_position;
+        Eigen::Vector3d v2 = proxi_position_2 - meta_position;
+
+        Eigen::Vector3d normal = v2.cross(v1);
         normal.normalize(); // Optional: normalize the normal vector
-
-        double D = -normal.dot(palm_position);
-
-        Eigen::Vector4d plane;
-        plane << normal, D;
-        return plane;
+        
+        return normal;
     }
 
     double computeAngle(const Eigen::Vector3d &v1,const Eigen::Vector3d &v2 )
@@ -88,19 +145,12 @@ namespace pose_utils {
         return angle_deg;
     }
 
-    Eigen::Vector2d jointAngle(const geometry_msgs::Pose &pose_meta,const geometry_msgs::Pose &pose_palm,
-        const geometry_msgs::Pose &pose_proxi,const geometry_msgs::Pose &pose_inter)
+    Eigen::Vector2d jointAngle(ros::Publisher& pub,Eigen::Vector3d &normal,const geometry_msgs::Pose &pose_meta, const geometry_msgs::Pose &pose_proxi,const geometry_msgs::Pose &pose_inter)
     {
         Eigen::Vector3d meta_position(
             pose_meta.position.x,
             pose_meta.position.y,
             pose_meta.position.z
-        );  
-
-        Eigen::Vector3d palm_position(
-            pose_palm.position.x,
-            pose_palm.position.y,
-            pose_palm.position.z
         );
 
         Eigen::Vector3d proxi_position(
@@ -115,8 +165,7 @@ namespace pose_utils {
             pose_inter.position.z
         );  
 
-        Eigen::Vector3d v1 = proxi_position - palm_position;
-        Eigen::Vector3d v2 = meta_position - palm_position;
+        Eigen::Vector3d v1 = proxi_position - meta_position;
         Eigen::Vector3d v3 = inter_position - proxi_position;
 
         Eigen::Quaterniond q_meta(
@@ -130,15 +179,21 @@ namespace pose_utils {
         Eigen::Vector3d x_axis = mat.col(0);
 
 
-        Eigen::Vector4d plane = computePlane(v1,v2,palm_position);
-        Eigen::Vector3d normal = plane.head<3>();
         Eigen::Vector3d projectionV3 = v3 - v3.dot(normal)*normal;
+        
+        //////////////////////////////////////////////////////////////////////////////////////////
+        pub.publish(vectorToArrowMarker(meta_position, v1, "world", "v1", 1, 1, 0, 0));
+        pub.publish(vectorToArrowMarker(proxi_position, v3, "world", "v3", 2, 0, 1, 0));
+        pub.publish(vectorToArrowMarker(proxi_position, projectionV3, "world", "proj_v3", 3, 0, 0, 1));
+        //////////////////////////////////////////////////////////////////////////////////////////
+
+
 
         
         double jointFE = computeAngle(v3,projectionV3);
-        double jointAA = computeAngle(projectionV3,v1-v2);
+        double jointAA = computeAngle(projectionV3,v1);
 
-        if(v3.dot(v1-v2)<0)
+        if(v3.dot(v1)<0)
         {
             std::cout<<"reverse"<<std::endl;
             jointFE = 90 + jointFE;
@@ -161,3 +216,5 @@ namespace pose_utils {
 
 
 }
+
+
