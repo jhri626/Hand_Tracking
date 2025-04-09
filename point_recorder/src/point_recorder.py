@@ -33,9 +33,22 @@ def record_point_callback(req):
     if len(recorded_points) >= 3:
         return TriggerResponse(success=False, message="Maximum of 3 reference points have already been recorded.")
 
-    # Record the current angle array (make a copy to ensure data integrity)
-    recorded_points.append(list(latest_angles))
-    rospy.loginfo("Recorded point %d: %s", len(recorded_points), latest_angles)
+    samples = []
+    sample_count = 20   # Number of samples to average.
+    rate = rospy.Rate(20)  # Sampling at 20 Hz.
+    
+    # Collect 20 samples.
+    while len(samples) < sample_count:
+        if latest_angles is not None:
+            samples.append(list(latest_angles))
+        rate.sleep()
+    
+    # Compute element-wise average across the collected samples.
+    # zip(*samples) aggregates elements at the same index from all samples.
+    averaged_angles = [sum(angles) / len(angles) for angles in zip(*samples)]
+    recorded_points.append(averaged_angles)
+
+    rospy.loginfo("Recorded point %d: %s", len(recorded_points), averaged_angles)
     
     # Save calibration points to the ROS parameter server under key 'calibration/recorded_points'
     rospy.set_param('calibration/recorded_points', recorded_points)
