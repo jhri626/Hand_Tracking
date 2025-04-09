@@ -41,6 +41,7 @@ def record_point_callback(req):
     while len(samples) < sample_count:
         if latest_angles is not None:
             samples.append(list(latest_angles))
+            rospy.loginfo("Collected sample %d: %s", len(samples), latest_angles)
         rate.sleep()
     
     # Compute element-wise average across the collected samples.
