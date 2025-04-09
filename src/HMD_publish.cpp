@@ -96,11 +96,12 @@ void HMD::processFrameIteration() {
     //     XR_HAND_JOINT_RING_INTERMEDIATE_EXT ,
     // };
 
-    int list[4] = {
+    int list[6] = {
         
         XR_HAND_JOINT_INDEX_METACARPAL_EXT,
         XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT ,
-        
+        XR_HAND_JOINT_MIDDLE_METACARPAL_EXT ,
+        XR_HAND_JOINT_MIDDLE_INTERMEDIATE_EXT,
         XR_HAND_JOINT_RING_METACARPAL_EXT ,
         XR_HAND_JOINT_RING_INTERMEDIATE_EXT ,
     };
@@ -109,6 +110,8 @@ void HMD::processFrameIteration() {
     // Set header information (timestamp and frame id)
     pose_array.header.stamp = ros::Time::now();
     pose_array.header.frame_id = "world";
+
+    angle_array.data.resize(6);
 
     
     int jointnum = size(specific_indices);
@@ -174,7 +177,7 @@ void HMD::processFrameIteration() {
     Eigen::Matrix3d mat = q_palm.normalized().toRotationMatrix();
     Eigen::Vector3d y_axis = mat.col(1);
 
-    for (int i =0; i < 1 ;i++)
+    for (int i =0; i < 3 ;i++)
     {
         geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*i]], pose_array.poses[list[2*i+1]]);
         std::cout << "Euler angles (degrees): " <<i+1<< std::endl;
@@ -182,16 +185,18 @@ void HMD::processFrameIteration() {
                 << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
                 << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
 
-        Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[6+5*2*i],pose_array.poses[7+5*2*i],pose_array.poses[8+5*2*i]);
+        Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[6+5*i],pose_array.poses[7+5*i],pose_array.poses[8+5*i]);
         std::cout << "FE and AA angle"<< std::endl;
         std::cout << "FE: "  << angle.x() 
                 << ", AA: "  << angle.y()  << std::endl;
-
+                angle_array.data[2*i] = angle.x();
+                angle_array.data[2*i+1] = angle.y();
         }
     
     
 
     hand_pose_pub.publish(pose_array);
+    hand_angle_pub.publish(angle_array);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     std::cout << "\033[2J\033[H";
     
