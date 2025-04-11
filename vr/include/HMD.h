@@ -97,4 +97,8 @@ private:
     std_msgs::Float32MultiArray        angle_array;
     std::vector<int>                   specific_indices = kSpecificIndices;
 
+    // AA joint
+     std::array<double, 4> AA_joint;
+    double gamma;
+
 };

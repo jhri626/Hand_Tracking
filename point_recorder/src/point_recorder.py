@@ -41,6 +41,7 @@ def record_point_callback(req):
     while len(samples) < sample_count:
         if latest_angles is not None:
             samples.append(list(latest_angles))
+            print([round(x, 6) for x in latest_angles])
             rospy.loginfo("Collected sample %d: %s", len(samples), latest_angles)
         rate.sleep()
     
@@ -48,6 +49,7 @@ def record_point_callback(req):
     # zip(*samples) aggregates elements at the same index from all samples.
     averaged_angles = [sum(angles) / len(angles) for angles in zip(*samples)]
     recorded_points.append(averaged_angles)
+    print("Calibration {0} : ".format(len(recorded_points)),[round(x, 6) for x in averaged_angles])
 
     rospy.loginfo("Recorded point %d: %s", len(recorded_points), averaged_angles)
     

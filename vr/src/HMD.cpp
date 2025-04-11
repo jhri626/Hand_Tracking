@@ -53,6 +53,9 @@ HMD::HMD(int arc, char *arv[])
     cv::Mat latestImage;             // Stores the latest image from ROS
     std::mutex imageMutex;           // Mutex to protect access to latestImage
 
+    // For AA angle
+    AA_joint = {0.0, 0.0, 0.0, 0.0};
+    gamma = 0.5;
 }
 
 HMD::~HMD()

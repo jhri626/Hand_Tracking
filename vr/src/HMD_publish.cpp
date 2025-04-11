@@ -14,6 +14,7 @@
 #include "HMD_number.h"
 #include "utils.h"
 
+
 // External global variables required for processing frames.
 // These variables should be defined in a common source file.
 
@@ -122,18 +123,6 @@ void HMD::processFrameIteration() {
     
 
         auto rightHandJoint = pXRHandTracking->GetHandJointLocations(XR_HAND_RIGHT_EXT)->jointLocations[i]; // fix after debug
-        // std::cerr << "Righthand status : " << rightHandJoint.locationFlags << std::endl;
-    // Han
-        // std::cout << "Left Hand Joint " << i << ": ("
-        //           << leftHandJoint.pose.position.x << ", "
-        //           << leftHandJoint.pose.position.y << ", "
-        //           << leftHandJoint.pose.position.z << ")\n";
-        // std::cout << "Right Hand Joint " << i << ": ("
-        //           << rightHandJoint.pose.position.x << ", "
-        //           << rightHandJoint.pose.position.y << ", "
-        //           << rightHandJoint.pose.position.z << ")\n";
-        
-
         if (leftHandJoint.locationFlags == 15)
         {
             // std::cout << "Left Hand Joint pub " <<std::endl;
@@ -177,6 +166,7 @@ void HMD::processFrameIteration() {
 
     Eigen::Matrix3d mat = q_palm.normalized().toRotationMatrix();
     Eigen::Vector3d y_axis = mat.col(1);
+    
 
     for (int i =0; i < 3 ;i++)
     {
@@ -191,9 +181,10 @@ void HMD::processFrameIteration() {
         std::cout << "FE: "  << angle.x() 
                 << ", AA: "  << angle.y()  << std::endl;
                 // angle_array.data[i+3] = angle.x();
-                // angle_array.data[i] = angle.y();
-                angle_array.data[i+3] = euler_angles.x * 180.0 / M_PI ;
-                angle_array.data[i] = euler_angles.y * 180.0 / M_PI ;
+                angle_array.data[i] = angle.y();
+                angle_array.data[i+3] = euler_angles.x * 180.0 / M_PI ; // FE
+                AA_joint[i] = gamma * AA_joint[i] + (1-gamma)*angle.y() ;
+                angle_array.data[i] = AA_joint[i] ; // AA
         }
     
     
