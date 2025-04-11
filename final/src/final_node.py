@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 import rospy
 from std_msgs.msg import Float32MultiArray
+from sensor_msgs.msg import JointState
+from std_msgs.msg import Header
+from std_msgs.msg import Float64
 import numpy as np
 
 global cali_points
@@ -11,7 +14,7 @@ class Finalnode:
         Main function to initialize the node and retrieve calibration data from the ROS Parameter Server.
         """
         rospy.init_node('calibration_user', anonymous=False)
-        self.pub = rospy.Publisher("hand_angles",Float32MultiArray,queue_size=1)
+        self.pub = rospy.Publisher("/hand_joint_command",JointState,queue_size=1)
         self.sub = rospy.Subscriber('/raw_hand_angles', Float32MultiArray, self.callback)
 
         
@@ -33,16 +36,19 @@ class Finalnode:
 
         FE = 1.3*(raw_data[3:]-init_pos[3:])/(grap_pos[3:]-init_pos[3:])
         FE = np.clip(FE,np.zeros(3),1.3*np.ones(3))
+        # FE = np.zeros(3)
 
         AA = 0.5*(raw_data[:3]-init_pos[:3])/(extent_pos[:3]-init_pos[:3])
         AA = np.clip(AA,-0.5,0.5)
+        AA[2] = - AA[2]
 
-        combined = np.concatenate((FE, AA))
+        combined = np.concatenate((np.zeros(1),AA,np.zeros(1), FE)).astype(np.float64)
 
-        finalAngle = Float32MultiArray()
-        finalAngle.data = combined.tolist()
+        joint_8 = JointState()
+        joint_8.header = Header()
+        joint_8.position = combined.tolist()
 
-        self.pub.publish(finalAngle)
+        self.pub.publish(joint_8)
 
 if __name__ == '__main__':
     node = Finalnode()

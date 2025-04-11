@@ -182,9 +182,9 @@ namespace pose_utils {
         Eigen::Vector3d projectionV3 = v3 - v3.dot(normal)*normal;
         
         //////////////////////////////////////////////////////////////////////////////////////////
-        pub.publish(vectorToArrowMarker(meta_position, v1, "world", "v1", 1, 1, 0, 0));
-        pub.publish(vectorToArrowMarker(proxi_position, v3, "world", "v3", 2, 0, 1, 0));
-        pub.publish(vectorToArrowMarker(proxi_position, v4, "world", "proj_v3", 3, 0, 0, 1));
+        pub.publish(vectorToArrowMarker(meta_position, v1, "world", "v1", 1, 1, 0, 0)); // r
+        pub.publish(vectorToArrowMarker(proxi_position, v3, "world", "v3", 2, 0, 1, 0)); // g
+        pub.publish(vectorToArrowMarker(proxi_position, projectionV3, "world", "proj_v3", 3, 0, 0, 1)); // b
         //////////////////////////////////////////////////////////////////////////////////////////
 
 

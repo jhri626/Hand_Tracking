@@ -145,7 +145,7 @@ void HMD::processFrameIteration() {
             leftPose.orientation.y = leftHandJoint.pose.orientation.y;
             leftPose.orientation.z = leftHandJoint.pose.orientation.z;
             leftPose.orientation.w = leftHandJoint.pose.orientation.w;
-            pose_array.poses[i] = leftPose;
+            // pose_array.poses[i] = leftPose;
 
         }
         
@@ -163,6 +163,7 @@ void HMD::processFrameIteration() {
             rightPose.orientation.z = rightHandJoint.pose.orientation.z;
             rightPose.orientation.w = rightHandJoint.pose.orientation.w;
             // pose_array.poses[i+jointnum] = rightPose;
+            pose_array.poses[i] = rightPose;
         }
         
     }
@@ -189,15 +190,17 @@ void HMD::processFrameIteration() {
         std::cout << "FE and AA angle"<< std::endl;
         std::cout << "FE: "  << angle.x() 
                 << ", AA: "  << angle.y()  << std::endl;
-                angle_array.data[i+3] = angle.x();
-                angle_array.data[i] = angle.y();
+                // angle_array.data[i+3] = angle.x();
+                // angle_array.data[i] = angle.y();
+                angle_array.data[i+3] = euler_angles.x * 180.0 / M_PI ;
+                angle_array.data[i] = euler_angles.y * 180.0 / M_PI ;
         }
     
     
 
     hand_pose_pub.publish(pose_array);
     hand_angle_pub.publish(angle_array);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // std::this_thread::sleep_for(std::chrono::milliseconds(100)); //for debug erase it
     std::cout << "\033[2J\033[H";
     
     
@@ -278,7 +281,7 @@ void HMD::RenderSubmitFrame(const XrFrameState& frameState) {
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, latestImage.cols, latestImage.rows, GL_RGB, GL_UNSIGNED_BYTE, latestImage.data);
         } else {
             // 이미지가 없으면 기본 색상 클리어 (또는 별도 처리)
-            glClearColor(0.0f, 1.0f, 0.0f, 1.0f); // green as fallback
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f); // black as fallback
             glClear(GL_COLOR_BUFFER_BIT);
             // std::cerr << "[error] no image"<<std::endl;
         }
@@ -293,7 +296,7 @@ void HMD::RenderSubmitFrame(const XrFrameState& frameState) {
 
     XrCompositionLayerQuad colorLayer{XR_TYPE_COMPOSITION_LAYER_QUAD};
         colorLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
-        colorLayer.space = hmdSpace;
+        colorLayer.space = worldSpace;
         colorLayer.pose = { {0, 0, 0, 1}, {0, 0, -5} }; // 화면 앞 5m 위치
         colorLayer.size = {4.0f, 4.0f}; // 4m x 4m 크기
         colorLayer.subImage.imageArrayIndex = 0;

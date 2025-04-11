@@ -84,6 +84,7 @@
         "xtree": "cpp",
         "xutility": "cpp",
         "numeric": "cpp",
-        "queue": "cpp"
+        "queue": "cpp",
+        "geometry": "cpp"
     }
 }

@@ -10,9 +10,25 @@ project(final)
 find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
+  message_generation
+  geometry_msgs
+  sensor_msgs
 )
 
-catkin_package()
+add_message_files(
+  FILES
+  JointState.msg
+)
+
+generate_messages(
+  DEPENDENCIES std_msgs geometry_msgs
+)
+
+catkin_package(
+  CATKIN_DEPENDS message_runtime std_msgs
+  geometry_msgs
+  sensor_msgs
+)
 
 catkin_install_python(PROGRAMS
   src/final_node.py
