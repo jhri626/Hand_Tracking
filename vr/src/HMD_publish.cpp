@@ -112,7 +112,7 @@ void HMD::processFrameIteration() {
     pose_array.header.stamp = ros::Time::now();
     pose_array.header.frame_id = "world";
 
-    angle_array.data.resize(6);
+    angle_array.data.resize(2*fingernum);
 
     
     int jointnum = size(specific_indices);
@@ -168,21 +168,45 @@ void HMD::processFrameIteration() {
     Eigen::Vector3d y_axis = mat.col(1);
     
 
-    for (int i =0; i < 3 ;i++)
+    Eigen::Vector3d thumb_normal = pose_utils::computePlane(pose_array.poses[2],pose_array.poses[3],pose_array.poses[7]);
+    Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,thumb_normal,pose_array.poses[2],pose_array.poses[3],pose_array.poses[4]);
+    
+    geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[2], pose_array.poses[4]);
+        std::cout << "Euler angles (degrees): " <<0<< std::endl;
+        std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
+                << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
+                << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
+
+
+
+    std::cout << "FE and AA angle"<< std::endl;
+        std::cout << "FE: "  << angle.x() 
+                << ", AA: "  << angle.y()  << std::endl;
+                // angle_array.data[3] = angle.x();
+                angle_array.data[0] = angle.y();
+                angle_array.data[fingernum] = euler_angles.x * 180.0 / M_PI ; // FE
+                AA_joint[0] = gamma * AA_joint[0] + (1-gamma)*angle.y() ;
+                angle_array.data[0] = AA_joint[0] ; // AA
+
+
+
+
+
+    for (int i =1; i < 4 ;i++)
     {
-        geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*i]], pose_array.poses[list[2*i+1]]);
+        geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*(i-1)]], pose_array.poses[list[2*(i-1)+1]]);
         std::cout << "Euler angles (degrees): " <<i+1<< std::endl;
         std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
                 << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
                 << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
 
-        Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[6+5*i],pose_array.poses[7+5*i],pose_array.poses[8+5*i]);
+        Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[1+5*i],pose_array.poses[2+5*i],pose_array.poses[3+5*i]);
         std::cout << "FE and AA angle"<< std::endl;
         std::cout << "FE: "  << angle.x() 
                 << ", AA: "  << angle.y()  << std::endl;
                 // angle_array.data[i+3] = angle.x();
                 angle_array.data[i] = angle.y();
-                angle_array.data[i+3] = euler_angles.x * 180.0 / M_PI ; // FE
+                angle_array.data[i+fingernum] = euler_angles.x * 180.0 / M_PI ; // FE
                 AA_joint[i] = gamma * AA_joint[i] + (1-gamma)*angle.y() ;
                 angle_array.data[i] = AA_joint[i] ; // AA
         }
@@ -225,14 +249,7 @@ void HMD::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
 
 
 void HMD::RenderSubmitFrame(const XrFrameState& frameState) {
-    // auto startTime = std::chrono::steady_clock::now();
 
-    // float elapsed = std::chrono::duration<float>(
-    //     std::chrono::steady_clock::now() - startTime
-    // ).count();
-    // bool isGreen = std::fmod(elapsed, 60.0f) < 30.0f;
-    
-    // RenderSwapchainFrame(xrSwapchain, frameState, xrSpace, width, height, hDC);
     uint32_t imageIndex;
     XrSwapchainImageAcquireInfo acquireInfo{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
     xrAcquireSwapchainImage(xrSwapchain, &acquireInfo, &imageIndex);

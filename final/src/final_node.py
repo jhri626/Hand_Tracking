@@ -17,8 +17,8 @@ class Finalnode:
         self.pub = rospy.Publisher("/hand_joint_command",JointState,queue_size=1)
         self.sub = rospy.Subscriber('/raw_hand_angles', Float32MultiArray, self.callback)
 
-        self.FE_prev = np.zeros(3)
-        self.AA_prev = np.zeros(3)
+        self.FE_prev = np.zeros(4)
+        self.AA_prev = np.zeros(4)
         self.FE_max_delta = 0.1
         self.AA_max_delta = 0.05
 
@@ -39,8 +39,8 @@ class Finalnode:
 
         raw_data = np.array(msg.data)
 
-        FE = 1.3*(raw_data[3:]-init_pos[3:])/(grap_pos[3:]-init_pos[3:])
-        FE = np.clip(FE,np.zeros(3),1.3*np.ones(3))
+        FE = 1.3*(raw_data[4:]-init_pos[4:])/(grap_pos[4:]-init_pos[4:])
+        FE = np.clip(FE,np.zeros(4),1.3*np.ones(4))
         
         # FE = np.zeros(3)
         FE_adjusted = np.zeros_like(FE)
@@ -52,10 +52,10 @@ class Finalnode:
 
         self.FE_prev = FE_adjusted
 
-        diff = extent_pos[:3]-init_pos[:3]
+        diff = extent_pos[:4]-init_pos[:4]
         threshold = 10 # this is heuristic minimum value!!!! fix it later
-        AA = 0.5*np.tanh(3*((raw_data[:3]-init_pos[:3])/np.where(np.abs(diff) < threshold, np.sign(diff) * threshold, diff))**3)
-        AA[2] = - AA[2]
+        AA = 0.5*np.tanh(3*((raw_data[:4]-init_pos[:4])/np.where(np.abs(diff) < threshold, np.sign(diff) * threshold, diff))**3)
+        AA[3] = - AA[3]
 
         AA_adjusted = np.zeros_like(AA)
         for i in range(len(AA)):
@@ -63,7 +63,7 @@ class Finalnode:
             AA_adjusted[i] = self.AA_prev[i] + delta
         self.AA_prev = AA_adjusted
 
-        combined = np.concatenate((np.zeros(1),AA_adjusted,np.zeros(1), FE_adjusted)).astype(np.float64)
+        combined = np.concatenate((AA_adjusted, FE_adjusted)).astype(np.float64)
         
         joint_8 = JointState()
         joint_8.header = Header()

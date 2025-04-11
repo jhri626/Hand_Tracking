@@ -212,9 +212,6 @@ namespace pose_utils {
         
         return angle;
     }
-
-
-
 }
 
 

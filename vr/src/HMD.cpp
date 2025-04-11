@@ -56,6 +56,7 @@ HMD::HMD(int arc, char *arv[])
     // For AA angle
     AA_joint = {0.0, 0.0, 0.0, 0.0};
     gamma = 0.5;
+    fingernum = 4;
 }
 
 HMD::~HMD()
