@@ -205,9 +205,9 @@ void HMD::processFrameIteration() {
         std::cout << "FE: "  << angle.x() 
                 << ", AA: "  << angle.y()  << std::endl;
                 // angle_array.data[i+3] = angle.x();
-                angle_array.data[i] = angle.y();
+                // angle_array.data[i] = angle.y();
                 angle_array.data[i+fingernum] = euler_angles.x * 180.0 / M_PI ; // FE
-                AA_joint[i] = gamma * AA_joint[i] + (1-gamma)*angle.y() ;
+                AA_joint[i] = gamma * AA_joint[i] + (1-gamma) * angle.y() ;
                 angle_array.data[i] = AA_joint[i] ; // AA
         }
     
