@@ -171,6 +171,20 @@ void HMD::processFrameIteration() {
     Eigen::Vector3d thumb_normal = pose_utils::computePlane(pose_array.poses[2],pose_array.poses[3],pose_array.poses[7]);
     Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,thumb_normal,pose_array.poses[2],pose_array.poses[3],pose_array.poses[4]);
     
+    Eigen::Vector3d thumb_meta(
+        pose_array.poses[3].position.x - pose_array.poses[2].position.x,
+        pose_array.poses[3].position.y - pose_array.poses[2].position.y,
+        pose_array.poses[3].position.z - pose_array.poses[2].position.z
+    );
+
+    Eigen::Vector3d index_meta(
+        pose_array.poses[7].position.x - pose_array.poses[6].position.x,
+        pose_array.poses[7].position.y - pose_array.poses[6].position.y,
+        pose_array.poses[7].position.z - pose_array.poses[6].position.z
+    );
+
+    double thumb_AA = pose_utils::computeAngle(thumb_meta,index_meta);
+
     geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[2], pose_array.poses[4]);
         std::cout << "Euler angles (degrees): " <<0<< std::endl;
         std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
@@ -183,9 +197,9 @@ void HMD::processFrameIteration() {
         std::cout << "FE: "  << angle.x() 
                 << ", AA: "  << angle.y()  << std::endl;
                 // angle_array.data[3] = angle.x();
-                angle_array.data[0] = angle.y();
+                // angle_array.data[0] = angle.y();
                 angle_array.data[fingernum] = euler_angles.x * 180.0 / M_PI ; // FE
-                AA_joint[0] = gamma * AA_joint[0] + (1-gamma)*angle.y() ;
+                AA_joint[0] = gamma * AA_joint[0] + (1-gamma)*thumb_AA ;
                 angle_array.data[0] = AA_joint[0] ; // AA
 
 
