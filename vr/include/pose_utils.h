@@ -4,9 +4,19 @@
 #include <ros/ros.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/Vector3.h>
+#include <visualization_msgs/Marker.h>
 #include <Eigen/Geometry>
 #include <cmath>
 #include <iostream>
+
+visualization_msgs::Marker vectorToArrowMarker(
+    const Eigen::Vector3d& start,
+    const Eigen::Vector3d& vec,
+    const std::string& frame_id,
+    const std::string& ns,
+    int id,
+    float r, float g, float b
+);
 
 namespace pose_utils {
 

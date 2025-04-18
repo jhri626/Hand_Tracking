@@ -53,7 +53,7 @@ class Finalnode:
         self.FE_prev = FE_adjusted
 
         diff = extent_pos[:4]-init_pos[:4]
-        threshold = 20 # this is heuristic minimum value!!!! fix it later
+        threshold = 20 # TODO : This is heuristic minimum value!!!! fix it later
         AA = 0.5*np.tanh(((raw_data[:4]-init_pos[:4])/np.abs(np.where(np.abs(diff) < threshold, np.sign(diff) * threshold, diff)))**3)
         # AA[3] = - AA[3]
 

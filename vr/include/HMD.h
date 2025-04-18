@@ -21,6 +21,7 @@
 #include "pose_utils.h"
 #include <visualization_msgs/Marker.h>
 #include <geometry_msgs/Point.h>
+#include <ik.h>
 
 
 

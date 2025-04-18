@@ -171,7 +171,7 @@ namespace pose_utils {
         Eigen::Quaterniond q_meta(
             pose_meta.orientation.w,
             pose_meta.orientation.x,
-            pose_meta.orientation.y,
+            pose_meta.orientation.y,    
             pose_meta.orientation.z
         );
 
