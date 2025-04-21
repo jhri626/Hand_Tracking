@@ -13,6 +13,7 @@
 #include "HMD.h"
 #include "HMD_number.h"
 #include "utils.h"
+#include "lie_utils.h"
 
 
 // External global variables required for processing frames.
@@ -164,41 +165,37 @@ void HMD::processFrameIteration() {
         pose_array.poses[0].orientation.z
     );
 
-    Eigen::Matrix3d mat = q_palm.normalized().toRotationMatrix();
-    Eigen::Vector3d y_axis = mat.col(1);
-    
-
-
-    
-    Eigen::Vector3d thumb_meta(
-        pose_array.poses[3].position.x - pose_array.poses[1].position.x,
-        pose_array.poses[3].position.y - pose_array.poses[1].position.y,
-        pose_array.poses[3].position.z - pose_array.poses[1].position.z
+    Eigen::Quaterniond q_wrist(
+        pose_array.poses[1].orientation.w,
+        pose_array.poses[1].orientation.x,
+        pose_array.poses[1].orientation.y,
+        pose_array.poses[1].orientation.z
     );
 
-    Eigen::Vector3d thumb_proxi(
-        pose_array.poses[4].position.x - pose_array.poses[3].position.x,
-        pose_array.poses[4].position.y - pose_array.poses[3].position.y,
-        pose_array.poses[4].position.z - pose_array.poses[3].position.z
-    );
-
-    Eigen::Vector3d meta_position(
+    Eigen::Vector3d p_wrist(
         pose_array.poses[1].position.x,
         pose_array.poses[1].position.y,
         pose_array.poses[1].position.z
     );
 
-    Eigen::Vector3d proxi_position(
-        pose_array.poses[3].position.x,
-        pose_array.poses[3].position.y,
-        pose_array.poses[3].position.z
+    Eigen::Vector3d p_meta(
+        pose_array.poses[2].position.x,
+        pose_array.poses[2].position.y,
+        pose_array.poses[2].position.z
     );
 
-    marker_pub.publish(vectorToArrowMarker(meta_position,thumb_meta,"world","v1",1,1,0,0));
-    marker_pub.publish(vectorToArrowMarker(proxi_position,thumb_proxi,"world","v2",2,0,1,0));
+    Eigen::Matrix3d mat = q_palm.normalized().toRotationMatrix();
+    Eigen::Vector3d y_axis = mat.col(1);
+    
+
+
+    Eigen::Quaterniond q_new_ref = lie_group::axis_align(q_wrist,p_wrist,p_meta);
+    Eigen::Matrix4d T_rel = lie_group::computeRelativeSE3(q_new_ref, p_wrist, q_tgt, p_tgt);
+    // marker_pub.publish(vectorToArrowMarker(meta_position,thumb_meta,"world","v1",1,1,0,0));
+    // marker_pub.publish(vectorToArrowMarker(proxi_position,thumb_proxi,"world","v2",2,0,1,0));
     std::cout<<"link length"<<thumb_meta.norm()<<" and"<< thumb_proxi.norm()<<std::endl;
 
-    Eigen::Vector2d angle = ik::inversekinematics(pose_array.poses[1], pose_array.poses[4],pose_array.poses[2],
+    Eigen::Vector2d angle = ik::inversekinematics(marker_pub,pose_array.poses[1], pose_array.poses[4],pose_array.poses[2],pose_array.poses[3],
         thumb_meta.norm(), thumb_proxi.norm());
 
     std::cout << "FE and AA angle"<< std::endl;

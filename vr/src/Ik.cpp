@@ -1,6 +1,6 @@
 #include <ik.h>
 #include <cmath>
-#include <pose_utils.h>
+#include <pose_utils.h> 
 #include <iostream>
 #include <Eigen/Geometry>
 #include <geometry_msgs/Pose.h>
@@ -44,9 +44,10 @@ namespace ik {
 
       
 
-    Eigen::Vector2d inversekinematics(const geometry_msgs::Pose& pose_ref,
+    Eigen::Vector2d inversekinematics(const ros::Publisher& pub, const geometry_msgs::Pose& pose_ref,
                    const geometry_msgs::Pose& pose_target,
                    const geometry_msgs::Pose& pose_meta,
+                   const geometry_msgs::Pose& pose_proxi, // for debug
                    double L1, double L2)
     {
         // 1) Convert poses to Eigen
@@ -55,6 +56,7 @@ namespace ik {
             pose_ref.orientation.x,
             pose_ref.orientation.y,
             pose_ref.orientation.z);
+
         Eigen::Quaterniond q_tgt(
             pose_target.orientation.w,
             pose_target.orientation.x,
@@ -74,6 +76,11 @@ namespace ik {
             pose_meta.position.x,
             pose_meta.position.y,
             pose_meta.position.z);
+
+        Eigen::Vector3d p_proxi(
+            pose_proxi.position.x,
+            pose_proxi.position.y,
+            pose_proxi.position.z); // for debug
 
         // 2) Compute relative SE(3) and extract translation
         Eigen::Quaterniond q_new_ref = alignWristToMeta(q_ref,p_ref,p_meta);
@@ -98,12 +105,29 @@ namespace ik {
 
         ceres::Solver::Options options;
         options.linear_solver_type = ceres::DENSE_QR;
-        options.minimizer_progress_to_stdout = true;
+        // options.minimizer_progress_to_stdout = true;
         options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
         options.max_num_iterations   = 100;
 
         ceres::Solver::Summary summary;
         ceres::Solve(options, &problem, &summary);
+
+        Eigen::Vector3d proxi = L2 * (p_meta-p_ref).normalized();
+        Eigen::Vector3d joint1(
+            - q_new_ref.toRotationMatrix().col(0)
+        );
+        Eigen::Vector3d joint2(
+            - q_new_ref.toRotationMatrix().col(1)
+        );
+
+        proxi = Matexp3(joint2,theta[1]) * Matexp3(joint1,theta[0]) * proxi ;
+
+
+
+        pub.publish(vectorToArrowMarker(p_ref,p_meta-p_ref,"world","v1",1,1,0,0));
+        pub.publish(vectorToArrowMarker(p_meta,proxi,"world","v1",2,0,1,0));
+
+        
 
         // std::cout<<"work?"<<std::endl;
 
@@ -127,11 +151,11 @@ namespace ik {
 
             Eigen::Matrix3d newframe =  SO3 * wristSO3;
             
-            std::cout << "theta" << theta <<std::endl;
-            std::cout << "z_axis" << z_axis <<std::endl;
-            std::cout << "screw" << screw <<std::endl;
-            std::cout << "new_z_axis" << new_z_axis <<std::endl;
-            std::cout << "SO3" << SO3 <<std::endl;
+            // std::cout << "theta" << theta <<std::endl;
+            // std::cout << "z_axis" << z_axis <<std::endl;
+            // std::cout << "screw" << screw <<std::endl;
+            // std::cout << "new_z_axis" << new_z_axis <<std::endl;
+            // std::cout << "SO3" << SO3 <<std::endl;
             
             Eigen::Quaterniond q(newframe);
 

@@ -7,6 +7,7 @@
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/Vector3.h>
 #include <ceres/ceres.h>
+#include <pose_utils.h>
 
 namespace ik {
 
@@ -20,9 +21,11 @@ namespace ik {
   Eigen::Vector3d forwardKinematics(const double* theta, const double L1, const double L2);
   
   Eigen::Vector2d inversekinematics(
+      const ros::Publisher& pub,
       const geometry_msgs::Pose& pose_ref,
       const geometry_msgs::Pose& pose_target,
       const geometry_msgs::Pose& pose_meta,
+      const geometry_msgs::Pose& pose_proxi,
       double L1, double L2);
   
   Eigen::Quaterniond alignWristToMeta(
@@ -41,8 +44,8 @@ namespace ik {
   
       template <typename T>
       bool operator()(const T* const theta, T* residual) const {
-          T x = T(L2_) * ceres::sin(theta[1]);
-          T y = - T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]);
+          T x = T(L2_) * ceres::cos(theta[0]) * ceres::sin(theta[1]);
+          T y = - T(L2_) * ceres::sin(theta[0]);
           T z = - T(L1_) - T(L2_) * ceres::cos(theta[0]) * ceres::cos(theta[1]);
   
           residual[0] = x - T(target_position_.x());
