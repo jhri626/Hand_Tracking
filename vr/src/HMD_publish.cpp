@@ -165,11 +165,22 @@ void HMD::processFrameIteration() {
         pose_array.poses[0].orientation.z
     );
 
-    Eigen::Quaterniond q_wrist(
-        pose_array.poses[1].orientation.w,
-        pose_array.poses[1].orientation.x,
-        pose_array.poses[1].orientation.y,
-        pose_array.poses[1].orientation.z
+    Eigen::Matrix3d mat = q_palm.normalized().toRotationMatrix();
+    Eigen::Vector3d y_axis = mat.col(1);
+    
+
+
+    
+    Eigen::Vector3d thumb_meta(
+        pose_array.poses[2].position.x - pose_array.poses[1].position.x,
+        pose_array.poses[2].position.y - pose_array.poses[1].position.y,
+        pose_array.poses[2].position.z - pose_array.poses[1].position.z
+    );
+
+    Eigen::Vector3d thumb_proxi(
+        pose_array.poses[4].position.x - pose_array.poses[2].position.x,
+        pose_array.poses[4].position.y - pose_array.poses[2].position.y,
+        pose_array.poses[4].position.z - pose_array.poses[2].position.z
     );
 
     Eigen::Vector3d p_wrist(
@@ -178,7 +189,7 @@ void HMD::processFrameIteration() {
         pose_array.poses[1].position.z
     );
 
-    Eigen::Vector3d p_meta(
+    Eigen::Vector3d proxi_position(
         pose_array.poses[2].position.x,
         pose_array.poses[2].position.y,
         pose_array.poses[2].position.z
@@ -195,8 +206,8 @@ void HMD::processFrameIteration() {
     // marker_pub.publish(vectorToArrowMarker(proxi_position,thumb_proxi,"world","v2",2,0,1,0));
     std::cout<<"link length"<<thumb_meta.norm()<<" and"<< thumb_proxi.norm()<<std::endl;
 
-    Eigen::Vector2d angle = ik::inversekinematics(marker_pub,pose_array.poses[1], pose_array.poses[4],pose_array.poses[2],pose_array.poses[3],
-        thumb_meta.norm(), thumb_proxi.norm());
+    Eigen::Vector2d angle = ik::inversekinematics(pose_array.poses[1], pose_array.poses[4],pose_array.poses[2],
+        thumb_meta.norm(), 0.8 * thumb_proxi.norm());
 
     std::cout << "FE and AA angle"<< std::endl;
         std::cout << "FE: "  << angle.x() 
