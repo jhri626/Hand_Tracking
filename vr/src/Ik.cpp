@@ -93,12 +93,12 @@ namespace ik {
 
         problem.SetParameterLowerBound(theta, 0, -M_PI);
         problem.SetParameterUpperBound(theta, 0,  M_PI);
-        problem.SetParameterLowerBound(theta, 1, -M_PI/2);
-        problem.SetParameterUpperBound(theta, 1,  M_PI/2);
+        problem.SetParameterLowerBound(theta, 1, -M_PI/4);
+        problem.SetParameterUpperBound(theta, 1,  M_PI/4);
 
         ceres::Solver::Options options;
         options.linear_solver_type = ceres::DENSE_QR;
-        options.minimizer_progress_to_stdout = true;
+        // options.minimizer_progress_to_stdout = true;
         options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
         options.max_num_iterations   = 100;
 
@@ -116,7 +116,7 @@ namespace ik {
         const Eigen::Vector3d& p1,
         const Eigen::Vector3d& p2)
         {
-            Eigen::Vector3d new_z_axis = p1 -p2;
+            Eigen::Vector3d new_z_axis = (p1 - p2).normalized();
             Eigen::Matrix3d wristSO3= q1.normalized().toRotationMatrix();
             Eigen::Vector3d z_axis = wristSO3.col(2);
 
@@ -127,11 +127,12 @@ namespace ik {
 
             Eigen::Matrix3d newframe =  SO3 * wristSO3;
             
-            std::cout << "theta" << theta <<std::endl;
-            std::cout << "z_axis" << z_axis <<std::endl;
-            std::cout << "screw" << screw <<std::endl;
-            std::cout << "new_z_axis" << new_z_axis <<std::endl;
-            std::cout << "SO3" << SO3 <<std::endl;
+            // std::cout << "theta" << theta <<std::endl;
+            // std::cout << "z_axis" << z_axis <<std::endl;
+            // std::cout << "screw" << screw <<std::endl;
+            // std::cout << "new_z_axis" << new_z_axis.normalized() <<std::endl;
+            // std::cout << "SO3" << SO3 <<std::endl;
+            // std::cout << "newframe" << newframe <<std::endl;
             
             Eigen::Quaterniond q(newframe);
 
@@ -145,10 +146,10 @@ namespace ik {
         Eigen::Matrix3d so3 = Eigen::Matrix3d::Zero();
         so3(0,1) = -vec(2);
         so3(0,2) = vec(1);
-        so3(1,2) = vec(0);
+        so3(1,2) = -vec(0);
         so3(1,0) = vec(2);
-        so3(2,1) = -vec(1);
-        so3(2,2) = vec(2);
+        so3(2,0) = -vec(1);
+        so3(2,1) = vec(0);
 
         return so3;
 

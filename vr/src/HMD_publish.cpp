@@ -171,15 +171,15 @@ void HMD::processFrameIteration() {
 
     
     Eigen::Vector3d thumb_meta(
-        pose_array.poses[3].position.x - pose_array.poses[1].position.x,
-        pose_array.poses[3].position.y - pose_array.poses[1].position.y,
-        pose_array.poses[3].position.z - pose_array.poses[1].position.z
+        pose_array.poses[2].position.x - pose_array.poses[1].position.x,
+        pose_array.poses[2].position.y - pose_array.poses[1].position.y,
+        pose_array.poses[2].position.z - pose_array.poses[1].position.z
     );
 
     Eigen::Vector3d thumb_proxi(
-        pose_array.poses[4].position.x - pose_array.poses[3].position.x,
-        pose_array.poses[4].position.y - pose_array.poses[3].position.y,
-        pose_array.poses[4].position.z - pose_array.poses[3].position.z
+        pose_array.poses[4].position.x - pose_array.poses[2].position.x,
+        pose_array.poses[4].position.y - pose_array.poses[2].position.y,
+        pose_array.poses[4].position.z - pose_array.poses[2].position.z
     );
 
     Eigen::Vector3d meta_position(
@@ -189,9 +189,9 @@ void HMD::processFrameIteration() {
     );
 
     Eigen::Vector3d proxi_position(
-        pose_array.poses[3].position.x,
-        pose_array.poses[3].position.y,
-        pose_array.poses[3].position.z
+        pose_array.poses[2].position.x,
+        pose_array.poses[2].position.y,
+        pose_array.poses[2].position.z
     );
 
     marker_pub.publish(vectorToArrowMarker(meta_position,thumb_meta,"world","v1",1,1,0,0));
@@ -199,7 +199,7 @@ void HMD::processFrameIteration() {
     std::cout<<"link length"<<thumb_meta.norm()<<" and"<< thumb_proxi.norm()<<std::endl;
 
     Eigen::Vector2d angle = ik::inversekinematics(pose_array.poses[1], pose_array.poses[4],pose_array.poses[2],
-        thumb_meta.norm(), thumb_proxi.norm());
+        thumb_meta.norm(), 0.8 * thumb_proxi.norm());
 
     std::cout << "FE and AA angle"<< std::endl;
         std::cout << "FE: "  << angle.x() 
