@@ -46,15 +46,14 @@ public:
     bool beginOpenXRSession();
     bool CreateSwapchain();
     void processFrameIteration();
-    void RenderSubmitFrame(const XrFrameState& frameState);
+    bool waitAndBeginFrame(XrFrameState& outState);
+    void publishHMDPose();
+    void locateHandJoints();
+    void updatePoseArray();
+    void computeJointAngles();
+    void renderAndSubmitFrame(const XrFrameState& frameState);
     void imageCallback(const sensor_msgs::ImageConstPtr& msg);
-    //debug
-    void publishVector(const Eigen::Vector3d& start,
-        const Eigen::Vector3d& vec,
-        const std::string& ns,
-        int id,
-        float r, float g, float b);
-    
+    //debug    
     
 
 private:
