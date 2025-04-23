@@ -204,14 +204,40 @@ void HMD::processFrameIteration() {
         pose_array.poses[2].position.y,
         pose_array.poses[2].position.z
     );
-    
 
+    Eigen::Vector3d index(
+        pose_array.poses[7].position.x - pose_array.poses[6].position.x,
+        pose_array.poses[7].position.y - pose_array.poses[6].position.y,
+        pose_array.poses[7].position.z - pose_array.poses[6].position.z
+    );
+
+    Eigen::Vector3d thumb(
+        pose_array.poses[3].position.x - pose_array.poses[2].position.x,
+        pose_array.poses[3].position.y - pose_array.poses[2].position.y,
+        pose_array.poses[3].position.z - pose_array.poses[2].position.z
+    );
+
+    Eigen::Vector3d projThumb = thumb - thumb.dot(y_axis) * y_axis;
+    Eigen::Vector3d projIndex = index - index.dot(y_axis) * y_axis;
+
+    double angleAA = 0;
+
+    if (y_axis.dot(projThumb.cross(projIndex)) <= 0)
+    {
+        angleAA = pose_utils::computeAngle(projThumb,projIndex);
+    }
+    else if (y_axis.dot(projThumb.cross(projIndex)) > 0)
+    {
+        angleAA = - pose_utils::computeAngle(projThumb,projIndex);
+    }
+
+    std::cout<< "angle : " << angleAA <<std::endl;
 
     Eigen::Quaterniond q_new_ref = lie_utils::axis_align(q_wrist,p_wrist,p_meta);
     // Eigen::Matrix4d T_rel = lie_group::computeRelativeSE3(q_new_ref, p_wrist, q_tgt, p_tgt);
     // marker_pub.publish(vectorToArrowMarker(meta_position,thumb_meta,"world","v1",1,1,0,0));
     // marker_pub.publish(vectorToArrowMarker(proxi_position,thumb_proxi,"world","v2",2,0,1,0));
-    std::cout<<"link length"<<thumb_meta.norm()<<" and"<< thumb_proxi.norm()<<std::endl;
+    // std::cout<<"link length"<<thumb_meta.norm()<<" and"<< thumb_proxi.norm()<<std::endl;
 
     geometry_msgs::Vector3 euler_angles_FE = pose_utils::poseToEulerAngles(pose_array.poses[2], pose_array.poses[4]);
     geometry_msgs::Vector3 euler_angles_AA = pose_utils::poseToEulerAngles(pose_array.poses[1], pose_array.poses[2]);
@@ -225,7 +251,7 @@ void HMD::processFrameIteration() {
                 // angle_array.data[3] = angle.x();
                 // angle_array.data[0] = angle.y();
                 angle_array.data[fingernum] = euler_angles_FE.x * 180.0 / M_PI  ; // FE
-                AA_joint[0] = gamma * AA_joint[0] + (1-gamma)* euler_angles_AA.x * 180.0 / M_PI ;
+                AA_joint[0] = gamma * AA_joint[0] + (1-gamma)* angleAA;
                 angle_array.data[0] = AA_joint[0] ; // AA
 
 
@@ -277,7 +303,9 @@ void HMD::processFrameIteration() {
         pose_array.poses[2].orientation.y,
         pose_array.poses[2].orientation.z
     );
-    std::cout<< "angle" << pose_utils::computeAngle(p_meta-p_wrist,q_meta.toRotationMatrix().col(2));
+
+
+    
     
 
 
