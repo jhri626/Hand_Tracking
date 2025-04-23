@@ -1,11 +1,11 @@
 // lie_utils.h
 // Header file for Lie algebra utilities (so(3))
+
 #include <pose_utils.h> 
 #pragma once
-
 #include <Eigen/Dense>
 
-namespace lie_group {
+namespace lie_utils {
 
 Eigen::Quaterniond axis_align(
     const Eigen::Quaterniond& q1,
@@ -23,7 +23,7 @@ Eigen::Matrix4d computeRelativeSE3(
     const Eigen::Quaterniond& q1,
     const Eigen::Vector3d& p1,
     const Eigen::Quaterniond& q2,
-    const Eigen::Vector3d& p2)
+    const Eigen::Vector3d& p2);
 
 
 } // namespace ik

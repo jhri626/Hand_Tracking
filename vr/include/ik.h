@@ -26,16 +26,8 @@ namespace ik {
       const geometry_msgs::Pose& pose_target,
       const geometry_msgs::Pose& pose_meta,
       const geometry_msgs::Pose& pose_proxi,
-      double L1, double L2);
+      double L1, double L2, double theta_init_x, double theta_init_y);
   
-  Eigen::Quaterniond alignWristToMeta(
-      const Eigen::Quaterniond& q1,
-      const Eigen::Vector3d& p1,
-      const Eigen::Vector3d& p2);
-  
-  Eigen::Matrix3d vecToso3(const Eigen::Vector3d& vec);
-  
-  Eigen::Matrix3d Matexp3(const Eigen::Vector3d& vec, const double& theta);
   
   // Cost functor for Ceres Solver
   struct IKCostFunctor {

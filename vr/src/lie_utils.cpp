@@ -5,18 +5,19 @@
 #include <cmath>
 #include <iostream>
 #include <pose_utils.h>
+#include <lie_utils.h>
 
 // protion of Kinematics using skrew 
 // have to be updated more...
 
-namespace lie_group {
+namespace lie_utils {
 
 Eigen::Quaterniond axis_align( // function to align one axis to one vector
     const Eigen::Quaterniond& q1,
     const Eigen::Vector3d& p1,
     const Eigen::Vector3d& p2)
     {
-        Eigen::Vector3d new_z_axis = p1 -p2;
+        Eigen::Vector3d new_z_axis = (p1 -p2).normalized();
         Eigen::Matrix3d wristSO3= q1.normalized().toRotationMatrix();
         Eigen::Vector3d z_axis = wristSO3.col(2);
 
@@ -32,6 +33,7 @@ Eigen::Quaterniond axis_align( // function to align one axis to one vector
         // std::cout << "screw" << screw <<std::endl;
         // std::cout << "new_z_axis" << new_z_axis <<std::endl;
         // std::cout << "SO3" << SO3 <<std::endl;
+        // std::cout << "newframe" << newframe <<std::endl;
         
         Eigen::Quaterniond q(newframe);
 
@@ -43,10 +45,10 @@ Eigen::Matrix3d vecToso3(const Eigen::Vector3d& vec) {
     Eigen::Matrix3d so3 = Eigen::Matrix3d::Zero();
     so3(0,1) = -vec(2);
     so3(0,2) =  vec(1);
-    so3(1,2) =  vec(0);
+    so3(1,2) = -vec(0);
     so3(1,0) =  vec(2);
-    so3(2,1) = -vec(1);
-    so3(2,2) =  vec(2); // Replicated from original implementation
+    so3(2,0) = -vec(1);
+    so3(2,1) =  vec(0); // Replicated from original implementation
     return so3;
 }
 
