@@ -83,4 +83,5 @@ if __name__ == '__main__':
 
     # enter at ternimal -> rosservice call /record_point "{}"
     # 1 is init, 2 is extend 3 is grap
+    # TODO : add more cali points
 
