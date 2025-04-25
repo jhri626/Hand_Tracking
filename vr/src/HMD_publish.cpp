@@ -1,4 +1,3 @@
-// FrameProcessor.cpp
 // This file contains the definition of processFrameIteration() function that
 // handles frame waiting, beginning, hand joint location updates, and frame submission.
 #define XR_KHR_composition_layer_color
@@ -14,11 +13,6 @@
 #include "HMD_number.h"
 #include "utils.h"
 #include "lie_utils.h"
-
-
-// External global variables required for processing frames.
-// These variables should be defined in a common source file.
-
 
 
 void HMD::processFrameIteration() {
@@ -98,16 +92,19 @@ void HMD::updatePoseArray() {
     // Initialize header
     pose_array.header.stamp    = ros::Time::now();
     pose_array.header.frame_id = "world";
-    pose_array.poses.clear();
-    pose_array.poses.reserve(kSpecificIndices.size() * 2);
+
+    const size_t n = kSpecificIndices.size();
 
     // Fill pose_array from hand joint locations
-    for (int idx : kSpecificIndices) {
-        auto leftLoc  = pXRHandTracking->GetHandJointLocations(XR_HAND_LEFT_EXT)->jointLocations[idx];
-        auto rightLoc = pXRHandTracking->GetHandJointLocations(XR_HAND_RIGHT_EXT)->jointLocations[idx];
+    for (size_t i = 0; i < n; ++i) {
+        int jointIdx = kSpecificIndices[i];
+
+        auto leftLoc  = pXRHandTracking->GetHandJointLocations(XR_HAND_LEFT_EXT)->jointLocations[jointIdx];
+        auto rightLoc = pXRHandTracking->GetHandJointLocations(XR_HAND_RIGHT_EXT)->jointLocations[jointIdx];
 
         if ((leftLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) &&
             (leftLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
+            
             geometry_msgs::Pose p;
             p.position.x = leftLoc.pose.position.x;
             p.position.y = leftLoc.pose.position.y;
@@ -117,11 +114,13 @@ void HMD::updatePoseArray() {
             p.orientation.y = leftLoc.pose.orientation.y;
             p.orientation.z = leftLoc.pose.orientation.z;
             p.orientation.w = leftLoc.pose.orientation.w;
-            // pose_array.poses.push_back(p);
+            pose_array.poses[i] = p;
+            
         }
 
         if ((rightLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) &&
             (rightLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
+            
             geometry_msgs::Pose p;
             p.position.x = rightLoc.pose.position.x;
             p.position.y = rightLoc.pose.position.y;
@@ -131,7 +130,8 @@ void HMD::updatePoseArray() {
             p.orientation.y = rightLoc.pose.orientation.y;
             p.orientation.z = rightLoc.pose.orientation.z;
             p.orientation.w = rightLoc.pose.orientation.w;
-            pose_array.poses.push_back(p);
+            pose_array.poses[n + i] = p;
+            
         }
     }
 }
@@ -139,6 +139,7 @@ void HMD::updatePoseArray() {
 void HMD::computeJointAngles() {
 
     angle_array.data.resize(2*fingernum);
+    const size_t n = kSpecificIndices.size();
 
 
     int list[6] = {
@@ -152,25 +153,25 @@ void HMD::computeJointAngles() {
     };
 
     Eigen::Quaterniond q_palm(
-        pose_array.poses[0].orientation.w,
-        pose_array.poses[0].orientation.x,
-        pose_array.poses[0].orientation.y,
-        pose_array.poses[0].orientation.z
+        pose_array.poses[XR_HAND_JOINT_PALM_EXT + n].orientation.w,
+        pose_array.poses[XR_HAND_JOINT_PALM_EXT + n].orientation.x,
+        pose_array.poses[XR_HAND_JOINT_PALM_EXT + n].orientation.y,
+        pose_array.poses[XR_HAND_JOINT_PALM_EXT + n].orientation.z
     );
 
     Eigen::Matrix3d mat = q_palm.normalized().toRotationMatrix();
     Eigen::Vector3d y_axis = mat.col(1);
 
     Eigen::Vector3d index(
-        pose_array.poses[7].position.x - pose_array.poses[6].position.x,
-        pose_array.poses[7].position.y - pose_array.poses[6].position.y,
-        pose_array.poses[7].position.z - pose_array.poses[6].position.z
+        pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT + n].position.x - pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT + n].position.x,
+        pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT + n].position.y - pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT + n].position.y,
+        pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT + n].position.z - pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT + n].position.z
     );
 
     Eigen::Vector3d thumb(
-        pose_array.poses[3].position.x - pose_array.poses[2].position.x,
-        pose_array.poses[3].position.y - pose_array.poses[2].position.y,
-        pose_array.poses[3].position.z - pose_array.poses[2].position.z
+        pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT + n].position.x - pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n].position.x,
+        pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT + n].position.y - pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n].position.y,
+        pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT + n].position.z - pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n].position.z
     );
 
     Eigen::Vector3d projThumb = thumb - thumb.dot(y_axis) * y_axis;
@@ -189,7 +190,9 @@ void HMD::computeJointAngles() {
         angleAA = - pose_utils::computeAngle(projThumb,projIndex);
     }
 
-    geometry_msgs::Vector3 euler_angles_FE = pose_utils::poseToEulerAngles(pose_array.poses[2], pose_array.poses[4]);
+    geometry_msgs::Vector3 euler_angles_FE = pose_utils::poseToEulerAngles(pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n], 
+        pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT + n]);
+
     std::cout << "FE and AA angle : "<< 0 << std::endl;
         std::cout << "FE: "  << euler_angles_FE.x * 180.0 / M_PI 
                 << ", AA: "  << angleAA  << std::endl;
@@ -203,13 +206,13 @@ void HMD::computeJointAngles() {
 
     for (int i =1; i < 4 ;i++)
     {
-        geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*(i-1)]], pose_array.poses[list[2*(i-1)+1]]);
+        geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*(i-1)] + n], pose_array.poses[list[2*(i-1)+1] + n]);
         std::cout << "Euler angles (degrees): " <<i+1<< std::endl;
         std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
                 << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
                 << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
 
-        Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[1+5*i],pose_array.poses[2+5*i],pose_array.poses[3+5*i]);
+        Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[1+5*i + n],pose_array.poses[2+5*i + n],pose_array.poses[3+5*i + n]);
         std::cout << "FE and AA angle"<< std::endl;
         std::cout << "FE: "  << angle.x() 
                 << ", AA: "  << angle.y()  << std::endl;
@@ -224,7 +227,7 @@ void HMD::computeJointAngles() {
     // using pose_utils::poseToEulerAngles(basePose, tipPose).
     hand_pose_pub.publish(pose_array);
     hand_angle_pub.publish(angle_array);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100)); //for debug erase it
+    // std::this_thread::sleep_for(std::chrono::milliseconds(100)); //for debug erase it
     std::cout << "\033[2J\033[H";
     std::this_thread::sleep_for(std::chrono::milliseconds(16));
 }

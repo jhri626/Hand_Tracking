@@ -245,13 +245,12 @@ bool HMD::beginOpenXRSession() {
         
     }
 
-    // 세션이 준비되지 않은 경우
+    // session not ready
     std::cerr << "[error] OpenXR session is not ready!" << std::endl;
     return false;
 }
 
 bool HMD::CreateSwapchain() {
-// xrSwapchain  = XR_NULL_HANDLE;
 
 uint32_t formatCount = 0;
 xrEnumerateSwapchainFormats(xrSession, 0, &formatCount, nullptr);

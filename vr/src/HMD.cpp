@@ -46,7 +46,7 @@ HMD::HMD(int arc, char *arv[])
     XrTime     xrTime     = 0;           // Initialized frame time
     XrSessionState currentSessionState;
     XrSwapchain xrSwapchain = XR_NULL_HANDLE;
-    // Swapchain 이미지 핸들을 저장할 컨테이너
+
     std::vector<XrSwapchainImageOpenGLKHR> swapchainImages;
 
     // For frame
@@ -126,17 +126,14 @@ int HMD::init()
 void HMD::rospublish()
 {
     ros::Rate loop_rate(60);
+    const size_t n = kSpecificIndices.size();
+    pose_array.poses.clear();
+    pose_array.poses.resize(n * 2);  
     while (ros::ok()) { 
 
         ros::spinOnce();  
         processFrameIteration(); 
-     
         loop_rate.sleep(); 
-        if (!bDrawHandJoints) {
-     
-        }
-
-        
     }
     
     delete pXRHandTracking;
