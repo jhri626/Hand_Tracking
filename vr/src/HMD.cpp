@@ -96,13 +96,11 @@ int HMD::init()
         std::cerr << "Failed to initialize OpenGL." << std::endl;
         return -1;
     }
-    std::cerr << "1" << std::endl;
     
     if (!CreateOpenXRInstanceAndSession()) {
         std::cerr << "Failed to create OpenXR instance and session." << std::endl;
         return -1;
     }
-    std::cerr << "2" << std::endl;
 
     pXRHandTracking = new OpenXRProvider::XRExtHandTracking(pLogger);
     try {
@@ -112,21 +110,16 @@ int HMD::init()
         return -1;
     }
 
-    std::cerr << "3" << std::endl;
-
     if (!beginOpenXRSession()) {
         std::cerr << "Failed to start OpenXR session." << std::endl;
         return -1;
     }
-
-    std::cerr << "4" << std::endl;
 
     if (!CreateSwapchain()) {
         std::cerr << "Failed to create Swapchain." << std::endl;
         return -1;
     }
 
-    std::cerr << "5" << std::endl;
     return 1;
 }
 
@@ -135,12 +128,12 @@ void HMD::rospublish()
     ros::Rate loop_rate(60);
     while (ros::ok()) { 
 
-        ros::spinOnce();  // 콜백 처리
+        ros::spinOnce();  
         processFrameIteration(); 
-        // std::this_thread::sleep_for(std::chrono::milliseconds(16)); 
-        loop_rate.sleep(); // 주기 유지
+     
+        loop_rate.sleep(); 
         if (!bDrawHandJoints) {
-            // std::cout << "Hand joints rendering stopped." << std::endl;
+     
         }
 
         

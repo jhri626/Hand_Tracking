@@ -30,7 +30,7 @@ def record_point_callback(req):
     if latest_angles is None:
         return TriggerResponse(success=False, message="No angle data received yet.")
 
-    if len(recorded_points) >= 3:
+    if len(recorded_points) >= 5:
         return TriggerResponse(success=False, message="Maximum of 3 reference points have already been recorded.")
 
     samples = []
@@ -57,9 +57,11 @@ def record_point_callback(req):
     rospy.set_param('calibration/recorded_points', recorded_points)
     
     response_message = "Reference point recorded successfully. Total recorded points: {0}".format(len(recorded_points))
-    if len(recorded_points) == 3:
-        rospy.loginfo("All recorded calibration points: %s", recorded_points)
-        response_message += " (All calibration points recorded: " + str(recorded_points) + ")"
+    
+    rospy.loginfo("All recorded calibration points: %s", averaged_angles)
+    response_message += " (Calibration points recorded: " + str(averaged_angles) + ")"
+    if len(recorded_points) == 5:
+        response_message += " Calibration end! "
     
     return TriggerResponse(success=True, message=response_message)
 

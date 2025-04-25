@@ -224,7 +224,7 @@ void HMD::computeJointAngles() {
     // using pose_utils::poseToEulerAngles(basePose, tipPose).
     hand_pose_pub.publish(pose_array);
     hand_angle_pub.publish(angle_array);
-    // std::this_thread::sleep_for(std::chrono::milliseconds(100)); //for debug erase it
+    std::this_thread::sleep_for(std::chrono::milliseconds(100)); //for debug erase it
     std::cout << "\033[2J\033[H";
     std::this_thread::sleep_for(std::chrono::milliseconds(16));
 }

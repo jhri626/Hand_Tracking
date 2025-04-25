@@ -35,11 +35,14 @@ class Finalnode:
     def callback(self, msg):
         init_pos = np.array(self.cali_points[0])
         extent_pos = np.array(self.cali_points[1])
-        grap_pos = np.array(self.cali_points[2])
+        good_pos = np.array(self.cali_points[2])
+        thumb_pos = np.array(self.cali_points[3])
+        sphere_pos = np.array(self.cali_points[4])
 
         raw_data = np.array(msg.data)
-
-        FE = 1.3*(raw_data[4:]-init_pos[4:])/(grap_pos[4:]-init_pos[4:])
+        FE = np.zeros(4)
+        FE[0] = 1.3*(raw_data[4]-init_pos[4])/(thumb_pos[4]-init_pos[4])
+        FE[1:] = 1.3*(raw_data[5:]-init_pos[5:])/(good_pos[5:]-init_pos[5:])
         FE = np.clip(FE,np.zeros(4),1.3*np.ones(4))
         
         # FE = np.zeros(3)
@@ -75,3 +78,9 @@ if __name__ == '__main__':
     node = Finalnode()
     rospy.spin()
     # TODO : update logic with update cali method
+    
+    # 1. still pose : basic pose
+    # 2. extend pose : extend every finger as much as possible
+    # 3. good finger pose : bend fingers except thumb
+    # 4. thumb bend pose : bend only thumb
+    # 5. sphere pose  : make sphere with hands (could not be used)
