@@ -225,6 +225,14 @@ void HMD::computeJointAngles() {
     
     // For each finger i, compute abduction/adduction (AA) and flexion/extension (FE)
     // using pose_utils::poseToEulerAngles(basePose, tipPose).
+
+    data_array.data.resize(3);
+    Eigen::Vector3d z(0,0,1);
+    data_array.data[0] = y_axis.dot(z);
+    data_array.data[1] = angle_array.data[1];
+    data_array.data[2] = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[6 + n],pose_array.poses[7 + n],pose_array.poses[8 + n]).y();
+
+    data_pub.publish(data_array);
     hand_pose_pub.publish(pose_array);
     hand_angle_pub.publish(angle_array);
     // std::this_thread::sleep_for(std::chrono::milliseconds(100)); //for debug erase it

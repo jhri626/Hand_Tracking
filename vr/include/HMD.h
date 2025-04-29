@@ -91,10 +91,12 @@ private:
     ros::Publisher                     hand_pose_pub;
     ros::Publisher                     hand_angle_pub;
     ros::Publisher                     marker_pub; //debug tool
+    ros::Publisher                     data_pub; //debug tool
     ros::Subscriber                    imageSub;
     tf2_ros::TransformBroadcaster*     tf_broadcaster{ nullptr };
     geometry_msgs::PoseArray           pose_array;
     std_msgs::Float32MultiArray        angle_array;
+    std_msgs::Float32MultiArray        data_array;
     std::vector<int>                   specific_indices = kSpecificIndices;
 
     // joint
