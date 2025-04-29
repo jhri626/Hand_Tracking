@@ -217,20 +217,25 @@ void HMD::computeJointAngles() {
         std::cout << "FE: "  << angle.x() 
                 << ", AA: "  << angle.y()  << std::endl;
                 // angle_array.data[i+3] = angle.x();
-                angle_array.data[i] = angle.y();
+                // angle_array.data[i] = angle.y();
                 angle_array.data[i+fingernum] = euler_angles.x * 180.0 / M_PI ; // FE
                 AA_joint[i] = gamma * AA_joint[i] + (1-gamma) * angle.y() ;
                 angle_array.data[i] = AA_joint[i] ; // AA
+
+                if (i==1)
+                {
+                    data_array.data.resize(3);
+                    Eigen::Vector3d z(0,0,1);
+                    data_array.data[0] = y_axis.dot(z);
+                    data_array.data[1] = euler_angles.x * 180.0 / M_PI;
+                    data_array.data[2] = euler_angles.y * 180.0 / M_PI;
+                }
         }
     
     // For each finger i, compute abduction/adduction (AA) and flexion/extension (FE)
     // using pose_utils::poseToEulerAngles(basePose, tipPose).
 
-    data_array.data.resize(3);
-    Eigen::Vector3d z(0,0,1);
-    data_array.data[0] = y_axis.dot(z);
-    data_array.data[1] = angle_array.data[1];
-    data_array.data[2] = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[6 + n],pose_array.poses[7 + n],pose_array.poses[8 + n]).y();
+    
 
     data_pub.publish(data_array);
     hand_pose_pub.publish(pose_array);
