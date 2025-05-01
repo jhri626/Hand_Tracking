@@ -32,6 +32,7 @@ catkin_package(
 
 catkin_install_python(PROGRAMS
   src/final_node.py
+  src/visualize.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

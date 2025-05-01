@@ -5,20 +5,7 @@ from cv_bridge import CvBridge
 import cv2
 
 def main():
-
-
-    backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
-
-    
-    # for backend in backends:
-    #     for i in range(10):  
-    #         cap = cv2.VideoCapture(i, backend)
-    #         if cap.isOpened():
-                
-    #             name = cap.getBackendName()
-    #             print("cam {} : backend {}. name: {}".format(i, backend, name))
-    #             cap.release
-    #     # Initialize the ROS node
+    # Initialize the ROS node
     rospy.init_node('opencv_webcam_node')
     
     # Create a publisher to publish webcam images
@@ -27,9 +14,8 @@ def main():
     # Initialize the CvBridge
     bridge = CvBridge()
     
-    # Open the default webcam using OpenCV's VideoCapture
-    # On Windows, you might want to use cv2.CAP_DSHOW as the second parameter
-    cap = cv2.VideoCapture(1,cv2.CAP_DSHOW)
+    # Open the default webcam (device index 1) with DirectShow backend
+    cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
     if not cap.isOpened():
         rospy.logerr("Failed to open webcam")
         return -1
@@ -37,7 +23,11 @@ def main():
     target_width = 1024
     target_height = 768
     
-    rate = rospy.Rate(60)  # 30 Hz
+    rate = rospy.Rate(60)  # 60 Hz
+    # Create an OpenCV window for display
+    cv2.namedWindow("Webcam View", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Webcam View", target_width, target_height)
+    
     while not rospy.is_shutdown():
         # Capture a new frame from the webcam
         ret, frame = cap.read()
@@ -45,16 +35,25 @@ def main():
             rospy.logwarn("Empty frame received")
             continue
         
-        # Convert the OpenCV image (BGR format) to ROS Image message using cv_bridge
+        # Resize and flip the frame
         frame_resized = cv2.resize(frame, (target_width, target_height))
         frame_flipped = cv2.flip(frame_resized, 0)
+        
+        # Publish to ROS topic
         msg = bridge.cv2_to_imgmsg(frame_flipped, encoding="bgr8")
         image_pub.publish(msg)
         
+        # Also show locally
+        cv2.imshow("Webcam View", frame_resized)             # Show the flipped frame
+        if cv2.waitKey(1) & 0xFF == ord('q'):                # Quit on 'q' key press
+            rospy.signal_shutdown("User requested shutdown")
+            break
+        
         rate.sleep()
     
-    # Release the webcam when done
+    # Release resources
     cap.release()
+    cv2.destroyAllWindows()
 
 if __name__ == '__main__':
     try:

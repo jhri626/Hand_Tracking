@@ -181,6 +181,13 @@ void HMD::computeJointAngles() {
 
     double angleAA = 0;
 
+    Eigen::Vector3d thumb_meta(
+        pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n].position.x,
+        pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n].position.y,
+        pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n].position.z
+
+    );
+
     if (y_axis.dot(projThumb.cross(projIndex)) <= 0)
     {
         angleAA = pose_utils::computeAngle(projThumb,projIndex);
@@ -189,6 +196,9 @@ void HMD::computeJointAngles() {
     {
         angleAA = - pose_utils::computeAngle(projThumb,projIndex);
     }
+
+    marker_pub.publish(vectorToArrowMarker(thumb_meta,projThumb, "world", "v1", 1, 1, 0, 0));
+    marker_pub.publish(vectorToArrowMarker(thumb_meta,projIndex, "world", "v2", 2, 0, 1, 0));
 
     geometry_msgs::Vector3 euler_angles_FE = pose_utils::poseToEulerAngles(pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n], 
         pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT + n]);
@@ -222,20 +232,24 @@ void HMD::computeJointAngles() {
                 AA_joint[i] = gamma * AA_joint[i] + (1-gamma) * angle.y() ;
                 angle_array.data[i] = AA_joint[i] ; // AA
 
-                if (i==1)
-                {
-                    data_array.data.resize(3);
-                    Eigen::Vector3d z(0,0,1);
-                    data_array.data[0] = y_axis.dot(z);
-                    data_array.data[1] = euler_angles.x * 180.0 / M_PI;
-                    data_array.data[2] = euler_angles.y * 180.0 / M_PI;
-                }
+                // if (i==1)
+                // {
+                //     data_array.data.resize(3);
+                //     Eigen::Vector3d z(0,0,1);
+                //     data_array.data[0] = y_axis.dot(z);
+                //     data_array.data[1] = euler_angles.x * 180.0 / M_PI;
+                //     data_array.data[2] = euler_angles.y * 180.0 / M_PI;
+                // }
         }
     
     // For each finger i, compute abduction/adduction (AA) and flexion/extension (FE)
     // using pose_utils::poseToEulerAngles(basePose, tipPose).
 
-    
+    data_array.data.resize(3);
+    Eigen::Vector3d z(0,0,1);
+    data_array.data[0] = y_axis.dot(z);
+    data_array.data[1] = euler_angles_FE.x * 180.0 / M_PI;
+    data_array.data[2] = angleAA;
 
     data_pub.publish(data_array);
     hand_pose_pub.publish(pose_array);
@@ -296,7 +310,7 @@ void HMD::renderAndSubmitFrame(const XrFrameState& frameState) {
                 latestImage.data
             );
         } else {
-            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT);
         }
     }
