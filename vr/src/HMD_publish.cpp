@@ -247,9 +247,10 @@ void HMD::computeJointAngles() {
 
     data_array.data.resize(3);
     Eigen::Vector3d z(0,0,1);
-    data_array.data[0] = y_axis.dot(z);
-    data_array.data[1] = euler_angles_FE.x * 180.0 / M_PI;
-    data_array.data[2] = angleAA;
+    geometry_msgs::Vector3 euler_thumb = pose_utils::poseToEulerAngles(pose_array.poses[n+1], pose_array.poses[n+4]);
+    data_array.data[0] = euler_thumb.x * 180.0 / M_PI;
+    data_array.data[1] = euler_thumb.y * 180.0 / M_PI;
+    data_array.data[2] = euler_thumb.z * 180.0 / M_PI;
 
     data_pub.publish(data_array);
     hand_pose_pub.publish(pose_array);

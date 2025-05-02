@@ -11,6 +11,7 @@ time_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
 # Two data buffers for the two array elements
 data1_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
 data2_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
+data3_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
 
 start_time = None
 
@@ -26,12 +27,14 @@ def topic_callback(msg):
     t = rospy.get_time() - start_time
 
     # Extract first two elements, defaulting to 0.0 if not present
-    data1 = msg.data[1] if len(msg.data) > 1 else 0.0
-    data2 = msg.data[2] if len(msg.data) > 2 else 0.0
+    data1 = msg.data[0] if len(msg.data) > 0 else 0.0
+    data2 = msg.data[1] if len(msg.data) > 1 else 0.0
+    data3 = msg.data[2] if len(msg.data) > 2 else 0.0
 
     time_buffer.append(t)
     data1_buffer.append(data1)
     data2_buffer.append(data2)
+    data3_buffer.append(data3)
 
 if __name__ == '__main__':
     # 2. Initialize the ROS node
@@ -45,12 +48,13 @@ if __name__ == '__main__':
     plt.ion()
     fig, ax = plt.subplots()
     line1, = ax.plot([], [], lw=2, label='roll angle')
-    line2, = ax.plot([], [], lw=2, linestyle='--', label='AA angle')
+    line2, = ax.plot([], [], lw=2, linestyle='--', label='pitch')
+    line3, = ax.plot([], [], lw=2, linestyle='--', label='yaw')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Value')
     ax.set_title('Real-time plot thumb joint angle')
     ax.legend(loc='upper right')
-    ax.set_ylim(-180, 60)  # Adjust based on data range
+    ax.set_ylim(-180, 180)  # Adjust based on data range
 
     # 5. Main loop: update plot at 10 Hz
     rate = rospy.Rate(10)  # 10 Hz
@@ -60,6 +64,7 @@ if __name__ == '__main__':
             # Update each line with its buffer
             line1.set_data(time_buffer, data1_buffer)
             line2.set_data(time_buffer, data2_buffer)
+            line3.set_data(time_buffer, data3_buffer)
             # Adjust x-axis to show only the current window
             time_padding = 2
             ax.set_xlim(time_buffer[0], time_buffer[-1]+time_padding)
