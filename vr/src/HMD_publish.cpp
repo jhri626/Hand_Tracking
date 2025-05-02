@@ -114,7 +114,7 @@ void HMD::updatePoseArray() {
             p.orientation.y = leftLoc.pose.orientation.y;
             p.orientation.z = leftLoc.pose.orientation.z;
             p.orientation.w = leftLoc.pose.orientation.w;
-            pose_array.poses[i] = p;
+            // pose_array.poses[i] = p;
             
         }
 
@@ -130,7 +130,7 @@ void HMD::updatePoseArray() {
             p.orientation.y = rightLoc.pose.orientation.y;
             p.orientation.z = rightLoc.pose.orientation.z;
             p.orientation.w = rightLoc.pose.orientation.w;
-            pose_array.poses[n + i] = p;
+            pose_array.poses[i] = p;
             
         }
     }
@@ -153,81 +153,133 @@ void HMD::computeJointAngles() {
     };
 
     Eigen::Quaterniond q_palm(
-        pose_array.poses[XR_HAND_JOINT_PALM_EXT + n].orientation.w,
-        pose_array.poses[XR_HAND_JOINT_PALM_EXT + n].orientation.x,
-        pose_array.poses[XR_HAND_JOINT_PALM_EXT + n].orientation.y,
-        pose_array.poses[XR_HAND_JOINT_PALM_EXT + n].orientation.z
+        pose_array.poses[XR_HAND_JOINT_PALM_EXT ].orientation.w,
+        pose_array.poses[XR_HAND_JOINT_PALM_EXT ].orientation.x,
+        pose_array.poses[XR_HAND_JOINT_PALM_EXT ].orientation.y,
+        pose_array.poses[XR_HAND_JOINT_PALM_EXT ].orientation.z
+    );
+
+    Eigen::Quaterniond q_wrist(
+        pose_array.poses[XR_HAND_JOINT_WRIST_EXT ].orientation.w,
+        pose_array.poses[XR_HAND_JOINT_WRIST_EXT ].orientation.x,
+        pose_array.poses[XR_HAND_JOINT_WRIST_EXT ].orientation.y,
+        pose_array.poses[XR_HAND_JOINT_WRIST_EXT ].orientation.z
     );
 
     Eigen::Matrix3d mat = q_palm.normalized().toRotationMatrix();
     Eigen::Vector3d y_axis = mat.col(1);
 
-    Eigen::Vector3d index(
-        pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT + n].position.x - pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT + n].position.x,
-        pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT + n].position.y - pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT + n].position.y,
-        pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT + n].position.z - pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT + n].position.z
+    // Eigen::Vector3d index(
+    //     pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.x - pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT ].position.x,
+    //     pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.y - pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT ].position.y,
+    //     pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.z - pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT ].position.z
+    // );
+
+    Eigen::Vector3d p_wrist(
+        pose_array.poses[XR_HAND_JOINT_WRIST_EXT ].position.x,
+        pose_array.poses[XR_HAND_JOINT_WRIST_EXT ].position.y,
+        pose_array.poses[XR_HAND_JOINT_WRIST_EXT ].position.z
     );
 
-    Eigen::Vector3d thumb(
-        pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT + n].position.x - pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n].position.x,
-        pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT + n].position.y - pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n].position.y,
-        pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT + n].position.z - pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n].position.z
+    Eigen::Vector3d p_thumb(
+        pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.x,
+        pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.y,
+        pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.z
     );
 
-    Eigen::Vector3d projThumb = thumb - thumb.dot(y_axis) * y_axis;
-    Eigen::Vector3d projIndex = index - index.dot(y_axis) * y_axis;
+    Eigen::Vector3d p_thumb_proxi(
+        pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT ].position.x,
+        pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT ].position.y,
+        pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT ].position.z
+    );
 
+    Eigen::Vector3d p_thumb_distal(
+        pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT ].position.x,
+        pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT ].position.y,
+        pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT ].position.z
+    );
+
+    Eigen::Vector3d writstToThumb = p_wrist - p_thumb;
+
+    Eigen::Vector3d projThumb = writstToThumb - writstToThumb.dot(y_axis) * y_axis;
+    projThumb = writstToThumb.norm() * projThumb.normalized();
+    // Eigen::Vector3d projIndex = index - index.dot(y_axis) * y_axis;
+    Eigen::Quaterniond newaxis =lie_utils::axis_align(q_wrist,writstToThumb);
+    double L1 = (p_thumb-p_wrist).norm();
+    double L2 = (p_thumb_distal-p_thumb_proxi).norm();
+    Eigen::Vector2d angle =ik::inversekinematics(marker_pub, newaxis, p_wrist , pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT], 
+        L1, L2, angle_array.data[fingernum],angle_array.data[0]);
+    
+    
+    std::cout << "FE and AA angle : "<< 0 << std::endl;
+        std::cout << "FE: "  << angle.x() 
+                << ", AA: "  << angle.y() << std::endl;
+
+
+
+    geometry_msgs::Pose p;
+    p.position.x = p_wrist.x();
+    p.position.y = p_wrist.y();
+    p.position.z = p_wrist.z();
+    
+    p.orientation.x = newaxis.x(); 
+    p.orientation.y = newaxis.y();
+    p.orientation.z = newaxis.z();
+    p.orientation.w = newaxis.w();
+    pose_array.poses[n+1] = p;
+    // std::cout << "p : "<< pose_array.poses[n+1] << std::endl;
+    // std::cout << "wrist : "<< pose_array.poses[1] << std::endl;
     
 
-    double angleAA = 0;
+    // double angleAA = 0;
 
-    if (y_axis.dot(projThumb.cross(projIndex)) <= 0)
-    {
-        angleAA = pose_utils::computeAngle(projThumb,projIndex);
-    }
-    else if (y_axis.dot(projThumb.cross(projIndex)) > 0)
-    {
-        angleAA = - pose_utils::computeAngle(projThumb,projIndex);
-    }
+    // if (y_axis.dot(projThumb.cross(projIndex)) <= 0)
+    // {
+    //     angleAA = pose_utils::computeAngle(projThumb,projIndex);
+    // }
+    // else if (y_axis.dot(projThumb.cross(projIndex)) > 0)
+    // {
+    //     angleAA = - pose_utils::computeAngle(projThumb,projIndex);
+    // }
 
-    geometry_msgs::Vector3 euler_angles_FE = pose_utils::poseToEulerAngles(pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n], 
-        pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT + n]);
+    // geometry_msgs::Vector3 euler_angles_FE = pose_utils::poseToEulerAngles(pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT + n], 
+    //     pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT + n]);
 
-    std::cout << "FE and AA angle : "<< 0 << std::endl;
-        std::cout << "FE: "  << euler_angles_FE.x * 180.0 / M_PI 
-                << ", AA: "  << angleAA  << std::endl;
-                // angle_array.data[3] = angle.x();
-                // angle_array.data[0] = angle.y();
-                angle_array.data[fingernum] = euler_angles_FE.x * 180.0 / M_PI  ; // FE
-                AA_joint[0] = gamma * AA_joint[0] + (1-gamma)* angleAA;
-                angle_array.data[0] = AA_joint[0] ; // AA
+    // std::cout << "FE and AA angle : "<< 0 << std::endl;
+    //     std::cout << "FE: "  << euler_angles_FE.x * 180.0 / M_PI 
+    //             << ", AA: "  << angleAA  << std::endl;
+    //             // angle_array.data[3] = angle.x();
+    //             // angle_array.data[0] = angle.y();
+    //             angle_array.data[fingernum] = euler_angles_FE.x * 180.0 / M_PI  ; // FE
+    //             AA_joint[0] = gamma * AA_joint[0] + (1-gamma)* angleAA;
+    //             angle_array.data[0] = AA_joint[0] ; // AA
 
-    // Ensure our angle array is sized for all fingers (AA + FE for each)
+    // // Ensure our angle array is sized for all fingers (AA + FE for each)
 
-    for (int i =1; i < 4 ;i++)
-    {
-        geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*(i-1)] + n], pose_array.poses[list[2*(i-1)+1] + n]);
-        std::cout << "Euler angles (degrees): " <<i+1<< std::endl;
-        std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
-                << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
-                << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
+    // for (int i =1; i < 4 ;i++)
+    // {
+    //     geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*(i-1)] + n], pose_array.poses[list[2*(i-1)+1] + n]);
+    //     std::cout << "Euler angles (degrees): " <<i+1<< std::endl;
+    //     std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
+    //             << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
+    //             << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
 
-        Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[1+5*i + n],pose_array.poses[2+5*i + n],pose_array.poses[3+5*i + n]);
-        std::cout << "FE and AA angle"<< std::endl;
-        std::cout << "FE: "  << angle.x() 
-                << ", AA: "  << angle.y()  << std::endl;
-                // angle_array.data[i+3] = angle.x();
-                angle_array.data[i] = angle.y();
-                angle_array.data[i+fingernum] = euler_angles.x * 180.0 / M_PI ; // FE
-                AA_joint[i] = gamma * AA_joint[i] + (1-gamma) * angle.y() ;
-                angle_array.data[i] = AA_joint[i] ; // AA
-        }
+    //     Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[1+5*i + n],pose_array.poses[2+5*i + n],pose_array.poses[3+5*i + n]);
+    //     std::cout << "FE and AA angle"<< std::endl;
+    //     std::cout << "FE: "  << angle.x() 
+    //             << ", AA: "  << angle.y()  << std::endl;
+    //             // angle_array.data[i+3] = angle.x();
+    //             angle_array.data[i] = angle.y();
+    //             angle_array.data[i+fingernum] = euler_angles.x * 180.0 / M_PI ; // FE
+    //             AA_joint[i] = gamma * AA_joint[i] + (1-gamma) * angle.y() ;
+    //             angle_array.data[i] = AA_joint[i] ; // AA
+    //     }
     
     // For each finger i, compute abduction/adduction (AA) and flexion/extension (FE)
     // using pose_utils::poseToEulerAngles(basePose, tipPose).
     hand_pose_pub.publish(pose_array);
     hand_angle_pub.publish(angle_array);
-    // std::this_thread::sleep_for(std::chrono::milliseconds(100)); //for debug erase it
+    std::this_thread::sleep_for(std::chrono::milliseconds(100)); //for debug erase it
     std::cout << "\033[2J\033[H";
     std::this_thread::sleep_for(std::chrono::milliseconds(16));
 }
