@@ -36,9 +36,9 @@ namespace ik {
   
     template <typename T>
     bool operator()(const T* const theta, T* residual) const {
-      T x =  T(L2_) * ceres::sin(theta[1]);
-      T y = - T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]);
-      T z = -T(L1_) - T(L2_) * ceres::cos(theta[0]) * ceres::cos(theta[1]);
+      T x =  T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]);
+      T y =  - T(L2_) * ceres::sin(theta[1]);
+      T z = - T(L1_) - T(L2_) * ceres::cos(theta[0]) * ceres::cos(theta[1]);
       residual[0] = x - T(target_position_.x());
       residual[1] = y - T(target_position_.y());
       residual[2] = z - T(target_position_.z());

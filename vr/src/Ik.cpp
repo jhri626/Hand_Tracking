@@ -47,13 +47,13 @@ namespace ik {
         ceres::Problem problem;
         auto* cost_function =
         new ceres::AutoDiffCostFunction<IKCostFunctor, 4, 2>(
-            new IKCostFunctor(target_pos, L1, L2, 0.05, 1e-6));
+            new IKCostFunctor(target_pos, L1, L2, 0.01, 1e-6));
         problem.AddResidualBlock(cost_function, nullptr, theta);
 
-        problem.SetParameterLowerBound(theta, 0, -M_PI);
-        problem.SetParameterUpperBound(theta, 0,  M_PI);
-        problem.SetParameterLowerBound(theta, 1, -0.15 - 0.5);
-        problem.SetParameterUpperBound(theta, 1,  0.15 + 0.5);
+        problem.SetParameterLowerBound(theta, 0, 0);
+        problem.SetParameterUpperBound(theta, 0,  2 * M_PI/3);
+        problem.SetParameterLowerBound(theta, 1, -0.2 - M_PI/6);
+        problem.SetParameterUpperBound(theta, 1,  -0.2 + M_PI/6);
 
         ceres::Solver::Options options;
         options.linear_solver_type = ceres::DENSE_QR;
@@ -67,19 +67,24 @@ namespace ik {
         Eigen::Vector3d proxi = -L1 * (q_ref.toRotationMatrix().col(2)).normalized();
 
         Eigen::Vector3d joint1(
-            - q_ref.toRotationMatrix().col(0)
+            q_ref.toRotationMatrix().col(0)
         );
         Eigen::Vector3d joint2(
-            - q_ref.toRotationMatrix().col(1)
+            q_ref.toRotationMatrix().col(1)
         );
 
 
-        Eigen::Vector3d newproxi = lie_utils::Matexp3(joint2,theta[1]) * lie_utils::Matexp3(joint1,theta[0]) * proxi * (L2)/L1 ;
+        Eigen::Vector3d newproxi(
+            L2 * ceres::cos(theta[1]) * ceres::sin(theta[0]),
+            - L2 * ceres::sin(theta[1]),
+            - L1 - L2 * ceres::cos(theta[0]) * ceres::cos(theta[1])
+        );
 
+        newproxi = q_ref.toRotationMatrix() * newproxi;
 
 
         pub.publish(vectorToArrowMarker(p_ref,proxi,"world","v1",1,1,0,0));
-        pub.publish(vectorToArrowMarker(p_ref+proxi,newproxi,"world","v1",2,0,1,0));
+        pub.publish(vectorToArrowMarker(p_ref+proxi,newproxi-proxi,"world","v1",2,0,1,0));
 
         
 

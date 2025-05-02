@@ -80,9 +80,10 @@ Eigen::Matrix4d computeRelativeSE3(
     std::cout<< "p2 : "<<p2<<std::endl;
 
     // Compute relative transform: T_rel = T1^{-1} * T2
-
+    
     // TODO : Make SE(3) & SO(3) inverse function
     Eigen::Matrix4d T_rel = inverseSE3(T1) * T2;
+    std::cout<< "T_rel : "<<T_rel<<std::endl;
     return T_rel;
 }
 
@@ -96,7 +97,7 @@ Eigen::Matrix4d inverseSE3(const Eigen::Matrix4d& SE3)
     Eigen::Matrix4d invSE3 = Eigen::Matrix4d::Identity();
     Eigen::Matrix3d invSO3 = inverseSO3(SE3.block<3,3>(0,0));
     invSE3.block<3,3>(0,0) = invSO3;
-    invSE3.block<3,1>(0,3) = -invSO3 * SE3.block<3,1>(0,3);    
+    invSE3.block<3,1>(0,3) = - invSO3 * SE3.block<3,1>(0,3);    
     return invSE3;
 }
 
