@@ -14,10 +14,9 @@ namespace lie_utils {
 
 Eigen::Quaterniond axis_align( // function to align one axis to one vector
     const Eigen::Quaterniond& q1,
-    const Eigen::Vector3d& p1,
-    const Eigen::Vector3d& p2)
+    const Eigen::Vector3d& p1)
     {
-        Eigen::Vector3d new_z_axis = (p1 -p2).normalized();
+        Eigen::Vector3d new_z_axis = p1.normalized();
         Eigen::Matrix3d wristSO3= q1.normalized().toRotationMatrix();
         Eigen::Vector3d z_axis = wristSO3.col(2);
 
@@ -81,12 +80,26 @@ Eigen::Matrix4d computeRelativeSE3(
     std::cout<< "p2 : "<<p2<<std::endl;
 
     // Compute relative transform: T_rel = T1^{-1} * T2
-
+    
     // TODO : Make SE(3) & SO(3) inverse function
-    Eigen::Matrix4d T_rel = T1.inverse() * T2;
+    Eigen::Matrix4d T_rel = inverseSE3(T1) * T2;
+    std::cout<< "T_rel : "<<T_rel<<std::endl;
     return T_rel;
 }
 
+Eigen::Matrix3d inverseSO3(const Eigen::Matrix3d& SO3)
+{
+    return SO3.transpose();
+}
+
+Eigen::Matrix4d inverseSE3(const Eigen::Matrix4d& SE3)
+{
+    Eigen::Matrix4d invSE3 = Eigen::Matrix4d::Identity();
+    Eigen::Matrix3d invSO3 = inverseSO3(SE3.block<3,3>(0,0));
+    invSE3.block<3,3>(0,0) = invSO3;
+    invSE3.block<3,1>(0,3) = - invSO3 * SE3.block<3,1>(0,3);    
+    return invSE3;
+}
 
 
 } 

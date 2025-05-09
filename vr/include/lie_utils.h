@@ -9,8 +9,7 @@ namespace lie_utils {
 
 Eigen::Quaterniond axis_align(
     const Eigen::Quaterniond& q1,
-    const Eigen::Vector3d& p1,
-    const Eigen::Vector3d& p2);
+    const Eigen::Vector3d& p1);
 
 
 // Converts a 3D vector into its corresponding skew-symmetric matrix (so(3))
@@ -25,5 +24,7 @@ Eigen::Matrix4d computeRelativeSE3(
     const Eigen::Quaterniond& q2,
     const Eigen::Vector3d& p2);
 
+Eigen::Matrix3d inverseSO3(const Eigen::Matrix3d& SO3);
+Eigen::Matrix4d inverseSE3(const Eigen::Matrix4d& SE3);
 
 } // namespace ik
