@@ -16,7 +16,7 @@ Eigen::Quaterniond axis_align(
 Eigen::Matrix3d vecToso3(const Eigen::Vector3d& vec);
 
 // Computes the matrix exponential of an so(3) element: exp([vec]_x * theta)
-Eigen::Matrix3d Matexp3(const Eigen::Vector3d& vec, double theta);
+Eigen::Matrix3d Matexp3(const Eigen::Matrix3d& so3, double theta);
 
 Eigen::Matrix4d computeRelativeSE3(
     const Eigen::Quaterniond& q1,

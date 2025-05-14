@@ -104,4 +104,7 @@ private:
     double gamma;
     int fingernum;
 
+    // for ik
+    Eigen::Vector3d temp;
+
 };

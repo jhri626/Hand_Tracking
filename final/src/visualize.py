@@ -12,6 +12,7 @@ time_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
 data1_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
 data2_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
 data3_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
+data4_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
 
 start_time = None
 
@@ -30,11 +31,13 @@ def topic_callback(msg):
     data1 = msg.data[0] if len(msg.data) > 0 else 0.0
     data2 = msg.data[1] if len(msg.data) > 1 else 0.0
     data3 = msg.data[2] if len(msg.data) > 2 else 0.0
+    data4 = msg.data[3] if len(msg.data) > 3 else 0.0
 
     time_buffer.append(t)
     data1_buffer.append(data1)
     data2_buffer.append(data2)
     data3_buffer.append(data3)
+    data4_buffer.append(data4)
 
 if __name__ == '__main__':
     # 2. Initialize the ROS node
@@ -47,9 +50,10 @@ if __name__ == '__main__':
     # 4. Set up Matplotlib in interactive mode
     plt.ion()
     fig, ax = plt.subplots()
-    line1, = ax.plot([], [], lw=2, label='roll angle')
-    line2, = ax.plot([], [], lw=2, linestyle='--', label='pitch')
-    line3, = ax.plot([], [], lw=2, linestyle='--', label='yaw')
+    line1, = ax.plot([], [], lw=2, label='euler')
+    line2, = ax.plot([], [], lw=2, linestyle='--', label='geo')
+    line3, = ax.plot([], [], lw=2, linestyle='--', label='geo')
+    line4, = ax.plot([], [], lw=2, linestyle='--', label='ik')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Value')
     ax.set_title('Real-time plot thumb joint angle')
@@ -65,6 +69,7 @@ if __name__ == '__main__':
             line1.set_data(time_buffer, data1_buffer)
             line2.set_data(time_buffer, data2_buffer)
             line3.set_data(time_buffer, data3_buffer)
+            line4.set_data(time_buffer, data4_buffer)
             # Adjust x-axis to show only the current window
             time_padding = 2
             ax.set_xlim(time_buffer[0], time_buffer[-1]+time_padding)

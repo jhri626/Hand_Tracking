@@ -23,7 +23,7 @@ Eigen::Quaterniond axis_align( // function to align one axis to one vector
         Eigen::Vector3d screw = z_axis.cross(new_z_axis).normalized();
         double theta = pose_utils::computeAngle(z_axis,new_z_axis) * M_PI/180;
 
-        Eigen::Matrix3d SO3 = Matexp3(screw, theta);
+        Eigen::Matrix3d SO3 = Matexp3(vecToso3(screw), theta);
 
         Eigen::Matrix3d newframe =  SO3 * wristSO3;
         
@@ -52,8 +52,7 @@ Eigen::Matrix3d vecToso3(const Eigen::Vector3d& vec) {
 }
 
 // Computes the matrix exponential of an so(3) element: exp([vec]_x * theta)
-Eigen::Matrix3d Matexp3(const Eigen::Vector3d& vec, double theta) {
-    Eigen::Matrix3d so3 = vecToso3(vec);
+Eigen::Matrix3d Matexp3(const Eigen::Matrix3d& so3, double theta) {
     return Eigen::Matrix3d::Identity()
          + std::sin(theta) * so3
          + (1.0 - std::cos(theta)) * so3 * so3;
@@ -70,20 +69,20 @@ Eigen::Matrix4d computeRelativeSE3(
     T1.block<3,3>(0,0) = q1.normalized().toRotationMatrix();  // rotation
     T1.block<3,1>(0,3) = p1;                                  // translation
 
-    std::cout<<"p1 : "<<p1<<std::endl;
+    // std::cout<<"p1 : "<<p1<<std::endl;
 
     // Build 4×4 transform T2 from pose2
     Eigen::Matrix4d T2 = Eigen::Matrix4d::Identity();
     T2.block<3,3>(0,0) = q2.normalized().toRotationMatrix();
     T2.block<3,1>(0,3) = p2;
 
-    std::cout<< "p2 : "<<p2<<std::endl;
+    // std::cout<< "p2 : "<<p2<<std::endl;
 
     // Compute relative transform: T_rel = T1^{-1} * T2
     
     // TODO : Make SE(3) & SO(3) inverse function
     Eigen::Matrix4d T_rel = inverseSE3(T1) * T2;
-    std::cout<< "T_rel : "<<T_rel<<std::endl;
+    // std::cout<< "T_rel : "<<T_rel<<std::endl;
     return T_rel;
 }
 
