@@ -36,16 +36,25 @@ namespace ik {
 
         ceres::Problem problem;
         if (mode == "thumb"){
-        double theta[2] = {theta_init_x,theta_init_y};
+            // double theta[2] = {
+            //     std::clamp(theta_init_x, 0.0, M_PI),
+            //     std::clamp(theta_init_y, -M_PI/4, M_PI/4)
+            // };
+            double theta[2] = {theta_init_x,theta_init_y};
             auto* cost_function =
         new ceres::AutoDiffCostFunction<thumbIKCostFunctor, 4, 2>(
-            new thumbIKCostFunctor(target_pos, L1, L2, 0.01, 1e-6));
+            new thumbIKCostFunctor(target_pos, L1, L2, 0.015, 1e-6));
         problem.AddResidualBlock(cost_function, nullptr, theta);
 
-        problem.SetParameterLowerBound(theta, 0, 0);
-        problem.SetParameterUpperBound(theta, 0,  2 * M_PI/3);
-        problem.SetParameterLowerBound(theta, 1, -0.2 - M_PI/6);
-        problem.SetParameterUpperBound(theta, 1,  -0.2 + M_PI/6);
+        // problem.SetParameterLowerBound(theta, 0, theta_init_x > M_PI/45 ? theta_init_x - M_PI/4 : 0);
+        // problem.SetParameterUpperBound(theta, 0, theta_init_x < M_PI - M_PI/45 ? theta_init_x + M_PI/4 : M_PI);
+        // problem.SetParameterLowerBound(theta, 1, theta_init_x > -M_PI/4 + M_PI/45? theta_init_y + M_PI/4 : -M_PI/4);
+        // problem.SetParameterUpperBound(theta, 1,  theta_init_x < M_PI/4 - M_PI/45? theta_init_y + M_PI/44 : M_PI/4);
+
+        problem.SetParameterLowerBound(theta, 0,  0);
+        problem.SetParameterUpperBound(theta, 0,  M_PI);
+        problem.SetParameterLowerBound(theta, 1,  -M_PI/4);
+        problem.SetParameterUpperBound(theta, 1,   M_PI/4);
 
         ceres::Solver::Options options;
         options.linear_solver_type = ceres::DENSE_QR;
@@ -67,8 +76,8 @@ namespace ik {
 
 
         Eigen::Vector3d newproxi(
-            ceres::sqrt(2)/2 * ( - (L2) * ceres::sin(theta[1]) + (L2) * ceres::cos(theta[1]) * ceres::sin(theta[0])),
-            - ceres::sqrt(2)/2 * ((L2) * ceres::sin(theta[1]) + (L2) * ceres::cos(theta[1]) * ceres::sin(theta[0])),
+            ceres::cos(M_PI *4.5/18) * ( - (L2) * ceres::sin(theta[1]) ) - ceres::sin(M_PI *4.5/18) * ( - (L2) * ceres::cos(theta[1]) * ceres::sin(theta[0])),
+            ceres::sin(M_PI *4.5/18) * ( - (L2) * ceres::sin(theta[1]) ) + ceres::cos(M_PI *4.5/18) * ( - (L2) * ceres::cos(theta[1]) * ceres::sin(theta[0])),
             - (L1) - (L2) * ceres::cos(theta[0]) * ceres::cos(theta[1])
         );
 

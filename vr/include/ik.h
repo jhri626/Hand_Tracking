@@ -40,8 +40,8 @@ namespace ik {
   
     template <typename T>
     bool operator()(const T* const theta, T* residual) const {
-      T x = ceres::sqrt(2)/2 * ( - T(L2_) * ceres::sin(theta[1]) + T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]));
-      T y = - ceres::sqrt(2)/2 * (T(L2_) * ceres::sin(theta[1]) + T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]));
+      T x = ceres::cos(M_PI *9/18) * ( - T(L2_) * ceres::sin(theta[1]) ) - ceres::sin(M_PI *9/18) * ( - T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]));
+      T y = ceres::sin(M_PI *9/18) * ( - T(L2_) * ceres::sin(theta[1]) ) + ceres::cos(M_PI *9/18) * ( - T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]));
       T z = - T(L1_) - T(L2_) * ceres::cos(theta[0]) * ceres::cos(theta[1]);
       residual[0] = x - T(target_position_.x());
       residual[1] = y - T(target_position_.y());
