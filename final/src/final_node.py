@@ -54,10 +54,13 @@ class Finalnode:
 
 
         self.FE_prev = FE_adjusted
-
-        diff = extent_pos[:4]-init_pos[:4]
+        diff=np.zeros(4)
+        diff[0] = sphere_pos[0]-init_pos[0]
+        diff[1:] = extent_pos[1:4]-init_pos[1:4]
         threshold = 20 # TODO : This is heuristic minimum value!!!! fix it later
-        AA = 0.5*np.tanh(((raw_data[:4]-init_pos[:4])/np.abs(np.where(np.abs(diff) < threshold, np.sign(diff) * threshold, diff)))**3)
+        AA = np.zeros(4)
+        AA[0] = 0.5*np.tanh(((raw_data[0]-init_pos[0])/np.abs(np.where(np.abs(diff[0]) < threshold, np.sign(diff[0]) * threshold, diff[0])))**3)
+        AA[1:] = 0.5*np.tanh(((raw_data[1:4]-init_pos[1:4])/np.abs(np.where(np.abs(diff[1:]) < threshold, np.sign(diff[1:]) * threshold, diff[1:])))**3)
         # AA[3] = - AA[3]
 
         AA_adjusted = np.zeros_like(AA)

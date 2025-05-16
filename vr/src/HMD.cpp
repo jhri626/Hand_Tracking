@@ -54,9 +54,10 @@ HMD::HMD(int arc, char *arv[])
     std::mutex imageMutex;           // Mutex to protect access to latestImage
 
     // For AA angle
-    AA_joint = {0.0, 0.0, 0.0, 0.0};
+    joint_queue = {0.0, 0.0, 0.0, 0.0, 0.0};
     gamma = 0.5;
     fingernum = 4;
+    temp = {-100,-100};
 }
 
 HMD::~HMD()

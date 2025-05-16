@@ -100,11 +100,11 @@ private:
     std::vector<int>                   specific_indices = kSpecificIndices;
 
     // joint
-    std::array<double, 4> AA_joint;
+    std::array<double, 5> joint_queue;
     double gamma;
     int fingernum;
 
     // for ik
-    Eigen::Vector3d temp;
+    std::array<double, 2> temp;
 
 };
