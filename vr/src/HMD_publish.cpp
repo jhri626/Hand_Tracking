@@ -335,9 +335,9 @@ void HMD::computeJointAngles() {
     std::cout<<"temp :"<<temp<<std::endl;
     Eigen::Vector3d MCP2_avg = (temp+MCP2)/2;
     m_Index_ik =ik::inversekinematicsIndex(marker_pub, MCP2_ori, MCP2_avg , pose_array.poses[XR_HAND_JOINT_INDEX_DISTAL_EXT], 
-        v4.norm(), v5.norm(), m_Index_ik[0],m_Index_ik[1],m_Index_ik[2], "index");
+        v4.norm(), v5.norm(), m_Index_ik[0], m_Index_ik[1],m_Index_ik[2], "index");
 
-    double FE_index_ik = m_Index_ik[0] + m_Index_ik[1];
+    double FE_index_ik = (m_Index_ik[0] + m_Index_ik[1]) * 180 / M_PI;
 
     /*
     Index data AA
@@ -361,14 +361,14 @@ void HMD::computeJointAngles() {
     */
 
     //euler
-    geometry_msgs::Vector3 euler_thumb = pose_utils::poseToEulerAngles(pose_array.poses[XR_HAND_JOINT_WRIST_EXT], pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT]);
-    double FE_thumb_euler = euler_thumb.x * 180/M_PI;
+    geometry_msgs::Vector3 euler_thumb = pose_utils::poseToEulerAngles(pose_array.poses[XR_HAND_JOINT_WRIST_EXT], pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT]);
+    double FE_thumb_euler = euler_thumb.x * 180 / M_PI;
 
     //geo use CMC1 MCP1 MCP2
     
     Eigen::Vector3d MCP1(pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT ].position.z);
     Eigen::Vector3d CMC1(pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.z);
-    Eigen::Vector3d PIP1(pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.z);
+    Eigen::Vector3d PIP1(pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT].position.x, pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT ].position.z);
 
     Eigen::Vector3d v6 = MCP1 - CMC1; // TM to thumb MCP
     Eigen::Vector3d v7 = MCP2 - CMC1; // TM to index MCP
@@ -376,10 +376,15 @@ void HMD::computeJointAngles() {
     Eigen::Vector3d v8 = MCP2 - MCP1; // thumb MCP to index MCP
     Eigen::Vector3d v9 = PIP1 - MCP1; // thumb MCP to MCP
 
-    Eigen::Vector3d n4 = v6.cross(v7).normalized();
-    Eigen::Vector3d n5 = v9.cross(v8).normalized();
+    Eigen::Vector3d n4 = v7.cross(v6).normalized();
+    Eigen::Vector3d n5 = v8.cross(v9).normalized();
 
-    double FE_thumb_geo = ((n4.cross(n5)).dot(mat.col(0)) <= 0) ? pose_utils::computeAngle(n4,n5) : -pose_utils::computeAngle(n4,n5);
+    double FE_thumb_geo = ((n4.cross(n5)).dot(mat.col(0)) <= 0) ? pose_utils::computeAngle(n4,n5) : - pose_utils::computeAngle(n4,n5);
+
+    marker_pub.publish(vectorToArrowMarker(MCP1,n4,"world","v1",1,1,0,0));
+    marker_pub.publish(vectorToArrowMarker(PIP1,n5,"world","v2",2,0,1,0));
+    marker_pub.publish(vectorToArrowMarker(MCP1,v8,"world","v3",3,0,0,1));
+    marker_pub.publish(vectorToArrowMarker(MCP1,v9,"world","v4",4,1,1,0));
 
 
     // ik
