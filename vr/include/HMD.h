@@ -91,12 +91,15 @@ private:
     ros::Publisher                     hand_pose_pub;
     ros::Publisher                     hand_angle_pub;
     ros::Publisher                     marker_pub; //debug tool
-    ros::Publisher                     data_pub; //debug tool
+    ros::Publisher                     data_index_pub; //data tool
+    ros::Publisher                     data_thumb_pub; //data tool
     ros::Subscriber                    imageSub;
     tf2_ros::TransformBroadcaster*     tf_broadcaster{ nullptr };
     geometry_msgs::PoseArray           pose_array;
     std_msgs::Float32MultiArray        angle_array;
     std_msgs::Float32MultiArray        data_array;
+    std_msgs::Float32MultiArray        data_thumb_array; //data tool
+    std_msgs::Float32MultiArray        data_index_array; //data tool
     std::vector<int>                   specific_indices = kSpecificIndices;
 
     // joint
@@ -106,5 +109,6 @@ private:
 
     // for ik
     Eigen::Vector3d temp;
+    Eigen::Vector3d m_Index_ik;
 
 };

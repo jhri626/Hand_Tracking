@@ -57,6 +57,7 @@ HMD::HMD(int arc, char *arv[])
     AA_joint = {0.0, 0.0, 0.0, 0.0};
     gamma = 0.5;
     fingernum = 4;
+    m_Index_ik = {-100,-100,-100};
 }
 
 HMD::~HMD()
@@ -83,7 +84,8 @@ int HMD::init()
     hand_pose_pub = nh.advertise<geometry_msgs::PoseArray>("hand_joints", 1);
     hand_angle_pub = nh.advertise<std_msgs::Float32MultiArray>("raw_hand_angles", 1);
     marker_pub = nh.advertise<visualization_msgs::Marker>("visualization_marker", 1); // debug tool
-    data_pub = nh.advertise<std_msgs::Float32MultiArray>("data", 1); // debug tool
+    data_index_pub = nh.advertise<std_msgs::Float32MultiArray>("data_index", 1); // debug tool
+    data_thumb_pub = nh.advertise<std_msgs::Float32MultiArray>("data_thumb", 1); // debug tool
 
     imageSub = nh.subscribe("camera/image_raw", 1, &HMD::imageCallback, this);
 
