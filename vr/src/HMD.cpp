@@ -91,7 +91,8 @@ int HMD::init()
 
     tf_broadcaster = new tf2_ros::TransformBroadcaster();
 
-    pose_array.poses.resize(specific_indices.size()*2);
+    // pose_array.poses.resize(specific_indices.size()*2);
+    pose_array.poses.resize(specific_indices.size());
 
     
 
@@ -131,7 +132,7 @@ void HMD::rospublish()
     ros::Rate loop_rate(60);
     const size_t n = kSpecificIndices.size();
     pose_array.poses.clear();
-    pose_array.poses.resize(n * 2);  
+    pose_array.poses.resize(n);  
     while (ros::ok()) { 
 
         ros::spinOnce();  

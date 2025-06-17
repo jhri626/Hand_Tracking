@@ -81,11 +81,11 @@ void HMD::publishHMDPose() {
 void HMD::locateHandJoints() {
     // Request joint locations for both hands
     pXRHandTracking->LocateHandJoints(
-        XR_HAND_LEFT_EXT, worldSpace, xrTime,
+        XR_HAND_LEFT_EXT, hmdSpace, xrTime,
         XR_HAND_JOINTS_MOTION_RANGE_CONFORMING_TO_CONTROLLER_EXT
     );
     pXRHandTracking->LocateHandJoints(
-        XR_HAND_RIGHT_EXT, worldSpace, xrTime,
+        XR_HAND_RIGHT_EXT, hmdSpace , xrTime,
         XR_HAND_JOINTS_MOTION_RANGE_CONFORMING_TO_CONTROLLER_EXT
     );
 }
@@ -94,7 +94,7 @@ void HMD::locateHandJoints() {
 void HMD::updatePoseArray() {
     // Initialize header
     pose_array.header.stamp    = ros::Time::now();
-    pose_array.header.frame_id = "world";
+    pose_array.header.frame_id = "hmd_frame";
 
     const size_t n = kSpecificIndices.size();
 
@@ -142,6 +142,7 @@ void HMD::updatePoseArray() {
 void HMD::computeJointAngles() {
 
     angle_array.data.resize(2*fingernum);
+    // angle_array.data.resize(fingernum);
     const size_t n = kSpecificIndices.size();
 
 
@@ -212,10 +213,11 @@ void HMD::computeJointAngles() {
     double L1 = ((p_thumb_proxi+p_thumb)/2-p_wrist).norm();
     double L2 = (p_thumb_distal-p_thumb_proxi).norm();
     Eigen::Vector2d angle =ik::inversekinematics(marker_pub, newaxis, p_wrist , pose_array.poses[XR_HAND_JOINT_THUMB_TIP_EXT], 
-        L1, L2, - angle_array.data[fingernum]*M_PI/180 , angle_array.data[0]*M_PI/180, "thumb");
+        L1, L2, 0 , 0, "thumb");
     
     std::cout<<angle<<std::endl;
     std::cout<<angle_array.data[fingernum]<<" "<<angle_array.data[0]<<std::endl;
+    
     // std::cout << "FE and AA angle : "<< 0 << std::endl;
     //     std::cout << "FE: "  << angle.x() 
     //             << ", AA: "  << angle.y() << std::endl;
@@ -335,13 +337,13 @@ void HMD::computeJointAngles() {
     std::cout<<"temp :"<<temp<<std::endl;
     Eigen::Vector3d MCP2_avg = (temp+MCP2)/2;
     m_Index_ik =ik::inversekinematicsIndex(marker_pub, MCP2_ori, MCP2_avg , pose_array.poses[XR_HAND_JOINT_INDEX_DISTAL_EXT], 
-        v4.norm(), v5.norm(), m_Index_ik[0], m_Index_ik[1],m_Index_ik[2], "index");
+        v4.norm(), v5.norm(), m_Index_ik[0], m_Index_ik[1] ,m_Index_ik[2], "index");
 
     double FE_index_ik = (m_Index_ik[0] + m_Index_ik[1]) * 180 / M_PI;
 
-    /*
-    Index data AA
-    */
+    // /*
+    // Index data AA
+    // */
     
     //euler
     double AA_index_euler = euler_index.y * 180/M_PI;
@@ -356,11 +358,11 @@ void HMD::computeJointAngles() {
     // ik
     double AA_index_ik = m_Index_ik[2];
 
-    /*
-    Thumb data FE
-    */
+    // /*
+    // Thumb data FE
+    // */
 
-    //euler
+    // //euler
     geometry_msgs::Vector3 euler_thumb = pose_utils::poseToEulerAngles(pose_array.poses[XR_HAND_JOINT_WRIST_EXT], pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT]);
     double FE_thumb_euler = euler_thumb.x * 180 / M_PI;
 
@@ -381,13 +383,10 @@ void HMD::computeJointAngles() {
 
     double FE_thumb_geo = ((n4.cross(n5)).dot(mat.col(0)) <= 0) ? pose_utils::computeAngle(n4,n5) : - pose_utils::computeAngle(n4,n5);
 
-    marker_pub.publish(vectorToArrowMarker(MCP1,n4,"world","v1",1,1,0,0));
-    marker_pub.publish(vectorToArrowMarker(PIP1,n5,"world","v2",2,0,1,0));
-    marker_pub.publish(vectorToArrowMarker(MCP1,v8,"world","v3",3,0,0,1));
-    marker_pub.publish(vectorToArrowMarker(MCP1,v9,"world","v4",4,1,1,0));
 
 
-    // ik
+
+    // // ik
 
     double FE_thumb_ik = angle.x() * 180.0 / M_PI;
 
@@ -415,7 +414,7 @@ void HMD::computeJointAngles() {
     data_index_array.data[3] = AA_index_euler;
     data_index_array.data[4] = AA_index_geo;
     data_index_array.data[5] = AA_index_geo_my;
-    data_index_array.data[6] = AA_thumb_ik;
+    data_index_array.data[6] = AA_index_ik;
     
 
     data_thumb_pub.publish(data_thumb_array);
@@ -424,7 +423,7 @@ void HMD::computeJointAngles() {
     hand_angle_pub.publish(angle_array);
     // std::this_thread::sleep_for(std::chrono::milliseconds(100)); //for debug erase it
     std::cout << "\033[2J\033[H";
-    std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // std::this_thread::sleep_for(std::chrono::milliseconds(16));
 }
 
 
