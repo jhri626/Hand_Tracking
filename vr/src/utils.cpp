@@ -1,6 +1,7 @@
 #include <Windows.h>
 #include <iostream>
 #include <utils.h>
+#include <conio.h>
 
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -13,6 +14,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     }
     return 0;
 }
+
+
+int checkUserInput() {
+    if (_kbhit()) {
+        char c = _getch();
+        if (c == 't') {
+            std::cout << "[Trigger] 't' pressed\n";
+            return 1;  
+        }
+    }
+    return 0;  
+}
+
 
 bool CreateRenderWindow(HWND& hWnd)
 {

@@ -81,8 +81,12 @@ int HMD::init()
     std::cerr << "[Info] Ros init" << std::endl;
     ros::NodeHandle nh;
     // Create a publisher for PoseArray messages on the "hand_joints" topic.
-    hand_pose_pub = nh.advertise<geometry_msgs::PoseArray>("hand_joints", 1);
-    hand_angle_pub = nh.advertise<std_msgs::Float32MultiArray>("raw_hand_angles", 1);
+    // hand_pose_pub = nh.advertise<geometry_msgs::PoseArray>("hand_joints", 1);
+    // hand_angle_pub = nh.advertise<std_msgs::Float32MultiArray>("raw_hand_angles", 1);
+
+    // for model
+    hand_sync_pub = nh.advertise<vr::HandSyncData>("hand_sync_data", 1);
+
     marker_pub = nh.advertise<visualization_msgs::Marker>("visualization_marker", 1); // debug tool
     data_index_pub = nh.advertise<std_msgs::Float32MultiArray>("data_index", 1); // debug tool
     data_thumb_pub = nh.advertise<std_msgs::Float32MultiArray>("data_thumb", 1); // debug tool
