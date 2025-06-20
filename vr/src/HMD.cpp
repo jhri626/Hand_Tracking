@@ -130,7 +130,8 @@ void HMD::rospublish()
     ros::Rate loop_rate(60);
     const size_t n = kSpecificIndices.size();
     pose_array.poses.clear();
-    pose_array.poses.resize(n * 2);  
+    // pose_array.poses.resize(n * 2);
+    pose_array.poses.resize(n);  
     while (ros::ok()) { 
 
         ros::spinOnce();  
