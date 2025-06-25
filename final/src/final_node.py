@@ -15,7 +15,7 @@ class Finalnode:
         """
         rospy.init_node('calibration_user', anonymous=False)
         self.pub = rospy.Publisher("/hand_joint_command",JointState,queue_size=1)
-        self.sub = rospy.Subscriber('/raw_hand_angles', Float32MultiArray, self.callback)
+        self.sub = rospy.Subscriber('/model_out', Float32MultiArray, self.callback)
 
         self.FE_prev = np.zeros(4)
         self.AA_prev = np.zeros(4)

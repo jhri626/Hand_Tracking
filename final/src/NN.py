@@ -1,190 +1,205 @@
 #!/usr/bin/env python
 """
-ROS1 node for FingerAngleFFN inference using NumPy weights loaded from .npz file.
-Simplified: hardcoded configuration without ROS parameter server.
-Compatible with Python 2.7.
-Subscribe to geometry_msgs/PoseArray, extract input features, perform inference, load scaler via joblib if available, or fallback to manual denormalization parameters.
-Edit MODEL_WEIGHTS_PATH, LAYERNORM_NAMES, LINEAR_NAMES, and input mapping as needed.
+ROS 1 node for Skeleton2Mesh-based hand-angle inference (NumPy only).
+
+Flow:
+  PoseArray -> NumPy model (Skeleton2AngleNumPy) -> Float32MultiArray
+* No normalisation / denormalisation step.
+* Compatible with Python 2.7 (ROS Kinetic/Melodic).
 """
+
 import rospy
 import numpy as np
 from geometry_msgs.msg import PoseArray
 from std_msgs.msg import Float32MultiArray
 from scipy.special import erf
+from bone import bone_parents, bone_children   # length 19
 
-# === Configuration: Edit these values as needed ===
-MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/model_weights.npz'  # Path to .npz file
-SCALER_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/y_scaler.pkl'  # Path to joblib-saved scaler
-# Specify LayerNorm and Linear layer names manually based on loaded npz keys
-LAYERNORM_NAMES = [
-    'ffn_blocks.0.block.0',
-    'ffn_blocks.1.block.0',
-    'ffn_blocks.2.block.0'
-]
-LINEAR_NAMES = [
-    'embedding_layer',
-    'ffn_blocks.0.block.1', 'ffn_blocks.0.block.3',
-    'ffn_blocks.1.block.1', 'ffn_blocks.1.block.3',
-    'ffn_blocks.2.block.1', 'ffn_blocks.2.block.3',
-    'output_layer'
-]
-EPS = 1e-5
-INPUT_TOPIC = '/hand_joints'      # Input topic name (PoseArray)
-OUTPUT_TOPIC = '/model_out'        # Output topic name (Float32MultiArray)
-KEYWORDS = [5,10,15,20,21,22,23,24,25]
+# --------------------------------------------------------------------------- #
+# Configuration
+# --------------------------------------------------------------------------- #
+MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/skeleton2angle_weights.npz'
 
-# Optional fallback manual denormalization parameters
-min_ = np.array([0.6937413,  0.60397506, 0.45551434, 0.20958792, 0.97614574, 0.88981766,
-                 0.8967024,  0.8895251], dtype=np.float32)
-scale_ = np.array([0.0097228,  0.0163719,  0.01707425, 0.01736045, 0.00853814, 0.00489475,
-                   0.00491007, 0.00486718], dtype=np.float32)
+NUM_JOINTS = 20
+NUM_BONES  = 19
+PE_FREQ_BK = 5
+PE_FREQ_OK = 2
+GSD_DIM    = 100
+NEG_SLOPE  = 0.01                 # LeakyReLU slope
 
-class FingerAngleFFNNumPy:
-    """
-    NumPy-based implementation of the FingerAngleFFN model for inference.
-    LayerNorm and Linear layer names are specified via LAYERNORM_NAMES and LINEAR_NAMES.
-    """
-    def __init__(self, npz_path, layernorm_names, linear_names, eps=1e-5):
-        try:
-            loaded = np.load(npz_path)
-        except Exception as e:
-            raise IOError('Failed to load npz file {}: {}'.format(npz_path, e))
-        self.params = {k: loaded[k].astype(np.float32) for k in loaded.files}
-        self.ln_names = layernorm_names
-        self.lin_names = linear_names
-        self.eps = eps
-        self.op_sequence = []
-        prev_linear = None
-        # Build sequence: embedding, blocks, output
-        if 'embedding_layer' in self.lin_names:
-            self.op_sequence.append(('linear', 'embedding_layer'))
-            prev_linear = 'embedding_layer'
-        num_blocks = len(self.ln_names)
-        for i in range(num_blocks):
-            ln_name = 'ffn_blocks.{}.block.0'.format(i)
-            lin1 = 'ffn_blocks.{}.block.1'.format(i)
-            lin2 = 'ffn_blocks.{}.block.3'.format(i)
-            if ln_name in self.ln_names:
-                self.op_sequence.append(('layernorm', ln_name))
-                prev_linear = None
-            if lin1 in self.lin_names:
-                if prev_linear is not None:
-                    self.op_sequence.append(('gelu', None))
-                self.op_sequence.append(('linear', lin1))
-                prev_linear = lin1
-            if lin2 in self.lin_names:
-                if prev_linear is not None:
-                    self.op_sequence.append(('gelu', None))
-                self.op_sequence.append(('linear', lin2))
-                prev_linear = lin2
-        if 'output_layer' in self.lin_names:
-            self.op_sequence.append(('linear', 'output_layer'))
+INPUT_TOPIC  = '/hand_joints'
+OUTPUT_TOPIC = '/model_out'
+KEYWORDS     = [0, 21, 22, 23, 24, 25]   # joints to skip
 
-    def layernorm(self, x, name):
-        gamma = self.params.get(name + '.weight')
-        beta = self.params.get(name + '.bias')
-        if gamma is None or beta is None:
-            raise KeyError('LayerNorm parameters for {} not found'.format(name))
-        mean = np.mean(x, axis=-1, keepdims=True)
-        var = np.mean((x - mean) ** 2, axis=-1, keepdims=True)
-        x_norm = (x - mean) / np.sqrt(var + self.eps)
-        return x_norm * gamma + beta
+# --------------------------------------------------------------------------- #
+# NumPy model (Skeleton2Mesh replica)
+# --------------------------------------------------------------------------- #
+class Skeleton2AngleNumPy(object):
+    """Pure-NumPy implementation reproducing the PyTorch Skeleton2Mesh forward."""
+    def __init__(self, npz_path):
+        self.params = {k: v.astype(np.float32) for k, v in np.load(npz_path).items()}
 
-    def linear(self, x, name):
-        W = self.params.get(name + '.weight')
-        if W is None:
-            raise KeyError('Linear weight for {} not found'.format(name))
-        b = self.params.get(name + '.bias', np.zeros(W.shape[0], dtype=np.float32))
-        return x.dot(W.T) + b
+    # --------------------------------------------------------------------- #
+    # Basic ops
+    # --------------------------------------------------------------------- #
+    @staticmethod
+    def gelu(x):
+        return 0.5 * x * (1. + erf(x / np.sqrt(2., dtype=x.dtype)))
 
-    def gelu(self, x):
-        return 0.5 * x * (1.0 + erf(x / np.sqrt(2.0)))
+    @staticmethod
+    def leaky_relu(x, neg_slope=NEG_SLOPE):
+        return np.where(x >= 0, x, neg_slope * x)
 
-    def forward(self, x):
-        x = x.astype(np.float32)
-        out = x
-        for op, name in self.op_sequence:
-            if op == 'layernorm':
-                out = self.layernorm(out, name)
-            elif op == 'linear':
-                out = self.linear(out, name)
-            elif op == 'gelu':
-                out = self.gelu(out)
-        return out
+    def linear(self, x, prefix):
+        """x: (..., in_features) -> (..., out_features)"""
+        w = self.params[prefix + '.weight']            # (out, in)
+        b = self.params[prefix + '.bias']
+        return np.dot(x, w.T) + b
 
-class InferenceNode:
-    """
-    ROS1 node to subscribe to PoseArray topic, perform inference, load scaler via joblib, fallback manual denormalization, and publish.
-    Simplified: no parameter server; uses hardcoded configuration above.
-    Compatible with Python 2.7.
-    """
+    # --------------------------------------------------------------------- #
+    # Positional encoding
+    # --------------------------------------------------------------------- #
+    @staticmethod
+    def position_encoding(x, num_freqs):
+        """
+        x: ndarray [..., D]
+        returns ndarray [..., D * 2 * num_freqs] (sin|cos concatenation)
+        """
+        freqs = (2.0 ** np.arange(num_freqs, dtype=x.dtype)) * np.pi   # (L,)
+        x_exp = x[..., None] * freqs                                   # [..., D, L]
+        sin   = np.sin(x_exp)
+        cos   = np.cos(x_exp)
+        pe    = np.concatenate([sin, cos], axis=-1)                    # [..., D, 2L]
+        new_shape = x.shape[:-1] + (-1,)
+        return pe.reshape(new_shape)                           # flatten
+
+    # --------------------------------------------------------------------- #
+    # Forward pass
+    # --------------------------------------------------------------------- #
+    def forward(self, skeletons_flat):
+        """
+        Input : skeletons_flat (B, 60) - 20 joints * 3 coords.
+        Output: (B, 8) - angle vector (no scaling applied).
+        """
+        B = skeletons_flat.shape[0]
+
+        # 1 | reshape joints
+        skel = skeletons_flat.reshape(B, NUM_JOINTS, 3)                # (B,20,3)
+
+        # 2 | bone endpoints
+        parents  = skel[:, bone_parents, :]                            # (B,19,3)
+        children = skel[:, bone_children, :]
+        Bk = np.concatenate([parents, children], axis=-1)              # (B,19,6)
+
+        # 3 | positional encodings
+        pe_bk = self.position_encoding(Bk, PE_FREQ_BK)                 # (B,19,60)
+
+        eye_nb = np.eye(NUM_BONES, dtype=np.float32)                   # (19,19)
+        ok     = np.broadcast_to(eye_nb, (B, NUM_BONES, NUM_BONES))    # (B,19,19)
+        pe_ok  = self.position_encoding(ok, PE_FREQ_OK)                # (B,19,76)
+
+        # 4 | global spatial descriptor g
+        flat = skel.reshape(B, -1)                                     # (B,60)
+        g    = self.linear(flat, 'gsd_mlp.0')
+        g    = self.gelu(g)
+        g    = self.linear(g, 'gsd_mlp.2')
+        g    = self.gelu(g)
+        g    = self.linear(g, 'gsd_mlp.4')                             # (B,100)
+        g    = g[:, None, :].repeat(NUM_BONES, axis=1)                 # (B,19,100)
+
+        # 5 | OE feature
+        OE = np.concatenate([pe_bk, pe_ok, g], axis=-1)                # (B,19,236)
+
+        # --- four heads -------------------------------------------------- #
+        def head(OE, name):                                            # -> (B,19,C)
+            h = self.linear(OE, name + '.0')
+            h = self.leaky_relu(h)
+            h = self.linear(h, name + '.2')
+            h = self.leaky_relu(h)
+            h = self.linear(h, name + '.4')
+            return h
+
+        out1 = head(OE, 'head1')                                       # (B,19,3)
+        out2 = head(OE, 'head2')                                       # (B,19,3)
+        out3 = head(OE, 'head3')                                       # (B,19,1)
+        out4 = head(OE, 'head4')                                       # (B,19,1)
+
+        # --- pooling along bone dim ------------------------------------- #
+        def pool(x, pool_name):                                        # (B,C,19) or (B,19)
+            w = self.params[pool_name + '.weight']                     # (1,19)
+            b = self.params[pool_name + '.bias'][0]                    # scalar
+            return (x * w).sum(axis=-1) + b                            # (B,C) or (B,)
+
+        # out1 / out2: transpose bones last -> last dim
+        o1 = np.transpose(out1, (0, 2, 1))                             # (B,3,19)
+        o2 = np.transpose(out2, (0, 2, 1))
+
+        agg1 = pool(o1, 'pool1')                                       # (B,3)
+        agg2 = pool(o2, 'pool2')
+
+        # out3 / out4: squeeze last singleton
+        o3 = out3.squeeze(-1)                                          # (B,19)
+        o4 = out4.squeeze(-1)
+
+        agg3 = pool(o3, 'pool3')[:, None]                              # (B,1)
+        agg4 = pool(o4, 'pool4')[:, None]
+
+        # concat -> (B,8)
+        return np.concatenate([agg1, agg2, agg3, agg4], axis=-1).astype(np.float32)
+
+# --------------------------------------------------------------------------- #
+# ROS node wrapper
+# --------------------------------------------------------------------------- #
+class InferenceNode(object):
+    """ROS 1 node that embeds Skeleton2AngleNumPy and publishes 8-D predictions."""
     def __init__(self):
-        rospy.init_node('finger_angle_inference')
+        rospy.init_node('skeleton2angle_inference')
+
+        # Load model
         try:
-            self.model = FingerAngleFFNNumPy(MODEL_WEIGHTS_PATH, LAYERNORM_NAMES, LINEAR_NAMES, EPS)
-            rospy.loginfo('Loaded model weights from {}'.format(MODEL_WEIGHTS_PATH))
+            self.model = Skeleton2AngleNumPy(MODEL_WEIGHTS_PATH)
+            rospy.loginfo('[OK] Loaded weights from %s', MODEL_WEIGHTS_PATH)
         except Exception as e:
-            rospy.logerr('Failed to load model weights: {}'.format(e))
-            rospy.signal_shutdown('Model load failure')
+            rospy.logerr('Model load failed: %s', e)
+            rospy.signal_shutdown('Cannot continue without weights')
             return
-        # Attempt to load scaler via joblib
-        self.scaler = None
-        try:
-            try:
-                import joblib
-            except ImportError:
-                from sklearn.externals import joblib
-            self.scaler = joblib.load(SCALER_PATH)
-            rospy.loginfo('Loaded scaler via joblib from {}'.format(SCALER_PATH))
-        except Exception as e:
-            rospy.logwarn('Scaler load via joblib failed: {}'.format(e))
-            rospy.logwarn('Fallback to manual denormalization parameters if applicable.')
+
+        # ROS I/O
         self.pub = rospy.Publisher(OUTPUT_TOPIC, Float32MultiArray, queue_size=1)
         rospy.Subscriber(INPUT_TOPIC, PoseArray, self.callback)
-        rospy.loginfo('Inference node initialized. Waiting for PoseArray input...')
+        rospy.loginfo('Node ready - waiting for %s', INPUT_TOPIC)
 
+    # --------------------------------------------------------------------- #
+    def _flatten_posearray(self, msg):
+        """PoseArray -> flat list of 60 floats (skip KEYWORDS joints)."""
+        data = []
+        for idx, p in enumerate(msg.poses):
+            if idx in KEYWORDS:
+                continue
+            # data.extend([p.position.x, p.position.y, p.position.z,
+                        #  p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w])
+            data.extend([p.position.x, p.position.y, p.position.z,])
+        return np.asarray(data, np.float32)
+
+    # --------------------------------------------------------------------- #
     def callback(self, msg):
         try:
-            poses = msg.poses
-            data_list = []
-            for idx,p in enumerate(poses):
+            x_flat = self._flatten_posearray(msg)[None, :]             # (1,60)
 
-                if idx in KEYWORDS:
-                    continue
-                else:
-                    data_list.extend([
-                        p.position.x, p.position.y, p.position.z,
-                        p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w
-                    ])
-            data = np.array(data_list, dtype=np.float32).reshape(1, -1)
-            output_norm = self.model.forward(data)
-            # Denormalize
-            if self.scaler is not None:
-                try:
-                    output_denorm = self.scaler.inverse_transform(output_norm)
-                except Exception as e_inv:
-                    rospy.logwarn('Scaler inverse_transform failed: {}'.format(e_inv))
-                    output_denorm = output_norm
-            else:
-                # Manual denormalization: (X_norm - min_) / scale_
-                if output_norm.shape[1] == min_.shape[0]:
-                    try:
-                        output_denorm = (output_norm - min_) / scale_
-                    except Exception as e_den:
-                        rospy.logwarn('Manual denormalization failed: {}'.format(e_den))
-                        output_denorm = output_norm
-                else:
-                    rospy.logwarn('Output dimension {} does not match manual denorm params {}'.format(output_norm.shape[1], min_.shape[0]))
-                    output_denorm = output_norm
-            out_msg = Float32MultiArray()
-            out_msg.data = output_denorm.flatten().tolist()
-            self.pub.publish(out_msg)
+            if x_flat.shape[1] != NUM_JOINTS * 3:
+                rospy.logwarn('Unexpected input length %d', x_flat.shape[1])
+                return
+
+            out = self.model.forward(x_flat)                           # (1,8)
+            self.pub.publish(Float32MultiArray(data=out.flatten().tolist()))
+
         except Exception as e:
-            rospy.logerr('Inference error: {}'.format(e))
+            rospy.logerr('Inference error: %s', e)
 
     def spin(self):
         rospy.spin()
 
+# --------------------------------------------------------------------------- #
 if __name__ == '__main__':
     node = InferenceNode()
     if not rospy.is_shutdown():

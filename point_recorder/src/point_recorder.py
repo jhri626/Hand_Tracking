@@ -72,7 +72,10 @@ def main():
     rospy.init_node('point_recorder', anonymous=False)
     
     # Subscribe to /angle topic, expected message type is Float32MultiArray
-    rospy.Subscriber('/raw_hand_angles', Float32MultiArray, angle_callback)
+    # rospy.Subscriber('/raw_hand_angles', Float32MultiArray, angle_callback)
+
+    # using model
+    rospy.Subscriber('/model_out', Float32MultiArray, angle_callback)
     
     # Create a service server with the Trigger service type to record a calibration point on demand
     rospy.Service('record_point', Trigger, record_point_callback)
