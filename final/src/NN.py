@@ -163,6 +163,11 @@ class InferenceNode(object):
             rospy.logerr('Model load failed: %s', e)
             rospy.signal_shutdown('Cannot continue without weights')
             return
+        
+        # Exponential Moving Average parameters
+        # smoothing factor alpha: higher -> output tracks new values more closely
+        self.ema_alpha = 0.5
+        self.ema       = None  # stores previous EMA value, shape (1,8)
 
         # ROS I/O
         self.pub = rospy.Publisher(OUTPUT_TOPIC, Float32MultiArray, queue_size=1)
@@ -191,7 +196,15 @@ class InferenceNode(object):
                 return
 
             out = self.model.forward(x_flat)                           # (1,8)
-            self.pub.publish(Float32MultiArray(data=out.flatten().tolist()))
+            
+            if self.ema is None:
+                self.ema = out.copy()
+            else:
+                self.ema = self.ema_alpha * out + (1.0 - self.ema_alpha) * self.ema
+
+            ema_list = self.ema.flatten().tolist()
+            self.pub.publish(Float32MultiArray(data=ema_list))
+
 
         except Exception as e:
             rospy.logerr('Inference error: %s', e)
