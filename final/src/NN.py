@@ -18,7 +18,7 @@ from bone import bone_parents, bone_children   # length 19
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/skeleton2angle_weights.npz'
+MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/skeleton2angle_ori.npz'
 
 NUM_JOINTS = 20
 NUM_BONES  = 19
@@ -76,15 +76,18 @@ class Skeleton2AngleNumPy(object):
     # --------------------------------------------------------------------- #
     # Forward pass
     # --------------------------------------------------------------------- #
-    def forward(self, skeletons_flat):
+    def forward(self, skeletons_data):
         """
-        Input : skeletons_flat (B, 60) - 20 joints * 3 coords.
+        Input : skeletons_flat (B, 64) - 20 joints * 3 coords + 4 quaternion.
         Output: (B, 8) - angle vector (no scaling applied).
         """
-        B = skeletons_flat.shape[0]
+        B = skeletons_data.shape[0]
+
+        ori = skeletons_data[:, :4]                     # (B,4)
+        flat_joints = skeletons_data[:, 4:]             # (B,60)
 
         # 1 | reshape joints
-        skel = skeletons_flat.reshape(B, NUM_JOINTS, 3)                # (B,20,3)
+        skel = flat_joints.reshape(B, NUM_JOINTS, 3)                # (B,20,3)
 
         # 2 | bone endpoints
         parents  = skel[:, bone_parents, :]                            # (B,19,3)
@@ -107,9 +110,14 @@ class Skeleton2AngleNumPy(object):
         g    = self.linear(g, 'gsd_mlp.4')                             # (B,100)
         g    = g[:, None, :].repeat(NUM_BONES, axis=1)                 # (B,19,100)
 
-        # 5 | OE feature
-        OE = np.concatenate([pe_bk, pe_ok, g], axis=-1)                # (B,19,236)
+        oe = np.dot(ori, self.params['orientation_embed.weight'].T) + self.params['orientation_embed.bias']
+        oe = oe[:, None, :].repeat(NUM_BONES, axis=1)      # (B,19,3)
 
+
+        # 5 | OE feature
+        OE = np.concatenate([pe_bk, pe_ok, g, oe], axis=-1)
+
+        
         # --- four heads -------------------------------------------------- #
         def head(OE, name):                                            # -> (B,19,C)
             h = self.linear(OE, name + '.0')
@@ -178,12 +186,19 @@ class InferenceNode(object):
     def _flatten_posearray(self, msg):
         """PoseArray -> flat list of 60 floats (skip KEYWORDS joints)."""
         data = []
+        ori = msg.poses[0].orientation
+        data.extend([ori.x, ori.y, ori.z, ori.w])
+
         for idx, p in enumerate(msg.poses):
             if idx in KEYWORDS:
                 continue
+            data.extend([
+                p.position.x, p.position.y, p.position.z
+            ])
+
             # data.extend([p.position.x, p.position.y, p.position.z,
                         #  p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w])
-            data.extend([p.position.x, p.position.y, p.position.z,])
+            # data.extend([p.position.x, p.position.y, p.position.z])
         return np.asarray(data, np.float32)
 
     # --------------------------------------------------------------------- #
@@ -191,7 +206,7 @@ class InferenceNode(object):
         try:
             x_flat = self._flatten_posearray(msg)[None, :]             # (1,60)
 
-            if x_flat.shape[1] != NUM_JOINTS * 3:
+            if x_flat.shape[1] != NUM_JOINTS * 3 + 4:
                 rospy.logwarn('Unexpected input length %d', x_flat.shape[1])
                 return
 
