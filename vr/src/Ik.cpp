@@ -6,6 +6,7 @@
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/Vector3.h>
 #include <ceres/ceres.h>
+#include <ceres/loss_function.h>
 #include <lie_utils.h>
 
 
@@ -40,7 +41,7 @@ namespace ik {
             //     std::clamp(theta_init_x, 0.0, M_PI),
             //     std::clamp(theta_init_y, -M_PI/4, M_PI/4)
             // };
-        double theta[2];
+            double theta[2];
         theta[0] = std::max(0.0, std::min(theta_init_x, M_PI));
         theta[1] = std::max(0.0, std::min(theta_init_y, M_PI)); 
 
@@ -49,15 +50,16 @@ namespace ik {
             new thumbIKCostFunctor(target_pos, L1, L2, 0.015, 1e-6));
         problem.AddResidualBlock(cost_function, nullptr, theta);
 
-        problem.SetParameterLowerBound(theta, 0, theta_init_x < M_PI ? (theta_init_x > M_PI/45 ? theta_init_x - M_PI/4 : 0) : 0);
-        problem.SetParameterUpperBound(theta, 0, theta_init_x > 0 ? (theta_init_x < M_PI - M_PI/45 ? theta_init_x + M_PI/4 : M_PI) : M_PI);
-        problem.SetParameterLowerBound(theta, 1, theta_init_y > -M_PI/4 + M_PI/45 ? theta_init_y - M_PI/4 : -M_PI/4);
-        problem.SetParameterUpperBound(theta, 1,  theta_init_y < M_PI/4 - M_PI/45 ? theta_init_y + M_PI/4 : M_PI/4);
+        // problem.SetParameterLowerBound(theta, 0, theta_init_x < M_PI ? (theta_init_x > M_PI/9 ? theta_init_x - M_PI/4 : 0) : 0);
+        // problem.SetParameterUpperBound(theta, 0, theta_init_x > 0 ? (theta_init_x < M_PI - M_PI/9 ? theta_init_x + M_PI/4 : M_PI) : M_PI);
+        // problem.SetParameterLowerBound(theta, 1, theta_init_y > -M_PI/4 + M_PI/9 ? theta_init_y - M_PI/4 : -M_PI/4);
+        // problem.SetParameterUpperBound(theta, 1,  theta_init_y < M_PI/4 - M_PI/9 ? theta_init_y + M_PI/4 : M_PI/4);
 
-        // problem.SetParameterLowerBound(theta, 0,  0);
-        // problem.SetParameterUpperBound(theta, 0,  M_PI);
-        // problem.SetParameterLowerBound(theta, 1,  -M_PI/4);
-        // problem.SetParameterUpperBound(theta, 1,   M_PI/4);
+        problem.SetParameterLowerBound(theta, 0, 0);
+        problem.SetParameterUpperBound(theta, 0,  M_PI);
+        problem.SetParameterLowerBound(theta, 1, -M_PI/2);
+        problem.SetParameterUpperBound(theta, 1,  M_PI/2);
+        
 
         ceres::Solver::Options options;
         options.linear_solver_type = ceres::DENSE_QR;
@@ -87,8 +89,8 @@ namespace ik {
         newproxi = q_ref.toRotationMatrix() * newproxi;
 
 
-        pub.publish(vectorToArrowMarker(p_ref,proxi,"world","v1",1,1,0,0));
-        pub.publish(vectorToArrowMarker(p_ref+proxi,newproxi-proxi,"world","v1",2,0,1,0));
+        // pub.publish(vectorToArrowMarker(p_ref,proxi,"world","v1",1,1,0,0));
+        // pub.publish(vectorToArrowMarker(p_ref+proxi,newproxi-proxi,"world","v1",2,0,1,0));
         return Eigen::Vector2d(theta[0], theta[1]);
         }
     }
@@ -116,28 +118,39 @@ namespace ik {
 
             ceres::Problem problem;
             double theta[3] = {theta_init_1,theta_init_2,theta_init_3};
+            theta[0] = std::max(0.0, std::min(theta_init_1, M_PI));
+            theta[1] = std::max(0.0, std::min(theta_init_2, M_PI));
+            theta[2] = std::max(0.0, std::min(theta_init_3, M_PI));
                 auto* cost_function =
             new ceres::AutoDiffCostFunction<indexIKCostFunctor, 2, 3>(
                 new indexIKCostFunctor(target_pos, L1, L2));
-            problem.AddResidualBlock(cost_function, nullptr, theta);
-    
-            problem.SetParameterLowerBound(theta, 0, theta_init_1-4);
-            problem.SetParameterUpperBound(theta, 0,  theta_init_1+4);
-            problem.SetParameterLowerBound(theta, 1, 0);
-            problem.SetParameterUpperBound(theta, 1,  M_PI/2);
-            problem.SetParameterLowerBound(theta, 2, -M_PI/4);
-            problem.SetParameterUpperBound(theta, 2,  M_PI/4);
-    
+            problem.AddResidualBlock(cost_function, new ceres::HuberLoss(0.01), theta);
+            
+
+            problem.SetParameterLowerBound(theta, 0, theta_init_1 > 0 ? (theta_init_1 > M_PI/9 ? theta_init_1 - M_PI/9 : 0) : 0);
+            problem.SetParameterUpperBound(theta, 0, theta_init_1 < 2 * M_PI/3 ? (theta_init_1 < 2 * M_PI/3 - M_PI/9 ? theta_init_1 + M_PI/9 : 2 * M_PI/3) : 2 * M_PI/3);
+            problem.SetParameterLowerBound(theta, 1, theta_init_2 > 0 ? (theta_init_2 > M_PI/9 ? theta_init_2 - M_PI/9 : 0) : 0);
+            problem.SetParameterUpperBound(theta, 1, theta_init_2 < 2 * M_PI/3 ? (theta_init_2 < 2 * M_PI/3 - M_PI/9 ? theta_init_2 + M_PI/9 : 2 * M_PI/3) : 2 * M_PI/3);
+            problem.SetParameterLowerBound(theta, 2, theta_init_3 > -M_PI/4 + M_PI/9 ? theta_init_3 - M_PI/4 : -M_PI/4);
+            problem.SetParameterUpperBound(theta, 2,  theta_init_3 < M_PI/4 - M_PI/9 ? theta_init_3 + M_PI/4 : M_PI/4);
+        
+            // problem.SetParameterLowerBound(theta, 0, 0);
+            // problem.SetParameterUpperBound(theta, 0,  M_PI/2);
+            // problem.SetParameterLowerBound(theta, 1, 0);
+            // problem.SetParameterUpperBound(theta, 1,  2 * M_PI/3);
+            // problem.SetParameterLowerBound(theta, 2, -M_PI/4);
+            // problem.SetParameterUpperBound(theta, 2,  M_PI/4);
+        
             ceres::Solver::Options options;
             options.linear_solver_type = ceres::DENSE_QR;
             // options.minimizer_progress_to_stdout = true;
             options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
-            options.max_num_iterations   = 100;
+            // options.max_num_iterations   = 20000;
     
             ceres::Solver::Summary summary;
             ceres::Solve(options, &problem, &summary);
             
-            std::cout<< "theta 0 :"<<theta[0]<<", theta 1 : "<<theta[1] <<", theta 2 : "<<theta[2]<<std::endl;
+            std::cout<< "theta 0 :"<<theta[0]<<", theta 1 : "<< theta[1] <<", theta 2 : "<< theta[2]<<std::endl;
             
             
     

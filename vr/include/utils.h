@@ -14,3 +14,4 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 /// @param hWnd Input HWND (ignored). Returns a valid HWND on success; nullptr on failure.
 /// @return Handle to the newly created window, or nullptr if creation failed.
 bool CreateRenderWindow(HWND& hWnd);
+int checkUserInput();
