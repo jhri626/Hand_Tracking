@@ -12,13 +12,16 @@ import rospy
 import numpy as np
 from geometry_msgs.msg import PoseArray
 from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Header
 from scipy.special import erf
 from bone import bone_parents, bone_children   # length 19
+from final.msg import HandSyncData
+
 
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/skeleton2angle_ori.npz'
+MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/model_weights.npz'
 
 NUM_JOINTS = 20
 NUM_BONES  = 19
@@ -27,7 +30,7 @@ PE_FREQ_OK = 2
 GSD_DIM    = 100
 NEG_SLOPE  = 0.01                 # LeakyReLU slope
 
-INPUT_TOPIC  = '/hand_joints'
+INPUT_TOPIC  = '/hand_sync_data'
 OUTPUT_TOPIC = '/model_out'
 KEYWORDS     = [0, 21, 22, 23, 24, 25]   # joints to skip
 
@@ -83,8 +86,8 @@ class Skeleton2AngleNumPy(object):
         """
         B = skeletons_data.shape[0]
 
-        ori = skeletons_data[:, :4]                     # (B,4)
-        flat_joints = skeletons_data[:, 4:]             # (B,60)
+        ori = skeletons_data[:, -3:]                     # (B,4)
+        flat_joints = skeletons_data[:, :-3]             # (B,60)
 
         # 1 | reshape joints
         skel = flat_joints.reshape(B, NUM_JOINTS, 3)                # (B,20,3)
@@ -127,10 +130,10 @@ class Skeleton2AngleNumPy(object):
             h = self.linear(h, name + '.4')
             return h
 
-        out1 = head(OE, 'head1')                                       # (B,19,3)
-        out2 = head(OE, 'head2')                                       # (B,19,3)
+        out1 = head(OE, 'head1')                                       # (B,19,1)
+        out2 = head(OE, 'head2')                                       # (B,19,1)
         out3 = head(OE, 'head3')                                       # (B,19,1)
-        out4 = head(OE, 'head4')                                       # (B,19,1)
+        
 
         # --- pooling along bone dim ------------------------------------- #
         def pool(x, pool_name):                                        # (B,C,19) or (B,19)
@@ -139,21 +142,19 @@ class Skeleton2AngleNumPy(object):
             return (x * w).sum(axis=-1) + b                            # (B,C) or (B,)
 
         # out1 / out2: transpose bones last -> last dim
-        o1 = np.transpose(out1, (0, 2, 1))                             # (B,3,19)
-        o2 = np.transpose(out2, (0, 2, 1))
-
-        agg1 = pool(o1, 'pool1')                                       # (B,3)
-        agg2 = pool(o2, 'pool2')
+        o1 = out1.squeeze(-1)                                          # (B,19)
+        o2 = out2.squeeze(-1)                                          # (B,19)
 
         # out3 / out4: squeeze last singleton
         o3 = out3.squeeze(-1)                                          # (B,19)
-        o4 = out4.squeeze(-1)
+        
 
-        agg3 = pool(o3, 'pool3')[:, None]                              # (B,1)
-        agg4 = pool(o4, 'pool4')[:, None]
+        agg1 = pool(o1, 'pool1')[:, None]                              # (B,1)
+        agg2 = pool(o2, 'pool2')[:, None]
+        agg3 = pool(o3, 'pool3')[:, None]
 
         # concat -> (B,8)
-        return np.concatenate([agg1, agg2, agg3, agg4], axis=-1).astype(np.float32)
+        return np.concatenate([agg1, agg2, agg3], axis=-1).astype(np.float32)
 
 # --------------------------------------------------------------------------- #
 # ROS node wrapper
@@ -204,20 +205,25 @@ class InferenceNode(object):
     # --------------------------------------------------------------------- #
     def callback(self, msg):
         try:
-            x_flat = self._flatten_posearray(msg)[None, :]             # (1,60)
+            x_flat = self._flatten_posearray(msg.pose_array)[None, :]             # (1,60)
+            x_flat.extend(msg.angles[-3:])
 
-            if x_flat.shape[1] != NUM_JOINTS * 3 + 4:
+            if x_flat.shape[1] != NUM_JOINTS * 3 + 3:
                 rospy.logwarn('Unexpected input length %d', x_flat.shape[1])
                 return
 
             out = self.model.forward(x_flat)                           # (1,8)
+            final_out = msg.angles.tolist()
+            final_out[1:4] = 0.5* (final_out[1:4] + out)
+            
             
             if self.ema is None:
                 self.ema = out.copy()
             else:
-                self.ema = self.ema_alpha * out + (1.0 - self.ema_alpha) * self.ema
+                self.ema = self.ema_alpha * final_out + (1.0 - self.ema_alpha) * self.ema
 
             ema_list = self.ema.flatten().tolist()
+            print("pub")
             self.pub.publish(Float32MultiArray(data=ema_list))
 
 

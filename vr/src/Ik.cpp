@@ -127,19 +127,19 @@ namespace ik {
             problem.AddResidualBlock(cost_function, new ceres::HuberLoss(0.01), theta);
             
 
-            problem.SetParameterLowerBound(theta, 0, theta_init_1 > 0 ? (theta_init_1 > M_PI/9 ? theta_init_1 - M_PI/9 : 0) : 0);
-            problem.SetParameterUpperBound(theta, 0, theta_init_1 < 2 * M_PI/3 ? (theta_init_1 < 2 * M_PI/3 - M_PI/9 ? theta_init_1 + M_PI/9 : 2 * M_PI/3) : 2 * M_PI/3);
-            problem.SetParameterLowerBound(theta, 1, theta_init_2 > 0 ? (theta_init_2 > M_PI/9 ? theta_init_2 - M_PI/9 : 0) : 0);
-            problem.SetParameterUpperBound(theta, 1, theta_init_2 < 2 * M_PI/3 ? (theta_init_2 < 2 * M_PI/3 - M_PI/9 ? theta_init_2 + M_PI/9 : 2 * M_PI/3) : 2 * M_PI/3);
-            problem.SetParameterLowerBound(theta, 2, theta_init_3 > -M_PI/4 + M_PI/9 ? theta_init_3 - M_PI/4 : -M_PI/4);
-            problem.SetParameterUpperBound(theta, 2,  theta_init_3 < M_PI/4 - M_PI/9 ? theta_init_3 + M_PI/4 : M_PI/4);
+            // problem.SetParameterLowerBound(theta, 0, theta_init_1 > 0 ? (theta_init_1 > M_PI/9 ? theta_init_1 - M_PI/9 : 0) : 0);
+            // problem.SetParameterUpperBound(theta, 0, theta_init_1 < 2 * M_PI/3 ? (theta_init_1 < 2 * M_PI/3 - M_PI/9 ? theta_init_1 + M_PI/9 : 2 * M_PI/3) : 2 * M_PI/3);
+            // problem.SetParameterLowerBound(theta, 1, theta_init_2 > 0 ? (theta_init_2 > M_PI/9 ? theta_init_2 - M_PI/9 : 0) : 0);
+            // problem.SetParameterUpperBound(theta, 1, theta_init_2 < 2 * M_PI/3 ? (theta_init_2 < 2 * M_PI/3 - M_PI/9 ? theta_init_2 + M_PI/9 : 2 * M_PI/3) : 2 * M_PI/3);
+            // problem.SetParameterLowerBound(theta, 2, theta_init_3 > -M_PI/4 + M_PI/9 ? theta_init_3 - M_PI/4 : -M_PI/4);
+            // problem.SetParameterUpperBound(theta, 2,  theta_init_3 < M_PI/4 - M_PI/9 ? theta_init_3 + M_PI/4 : M_PI/4);
         
-            // problem.SetParameterLowerBound(theta, 0, 0);
-            // problem.SetParameterUpperBound(theta, 0,  M_PI/2);
-            // problem.SetParameterLowerBound(theta, 1, 0);
-            // problem.SetParameterUpperBound(theta, 1,  2 * M_PI/3);
-            // problem.SetParameterLowerBound(theta, 2, -M_PI/4);
-            // problem.SetParameterUpperBound(theta, 2,  M_PI/4);
+            problem.SetParameterLowerBound(theta, 0, 0);
+            problem.SetParameterUpperBound(theta, 0,  M_PI/2);
+            problem.SetParameterLowerBound(theta, 1, 0);
+            problem.SetParameterUpperBound(theta, 1,  2 * M_PI/3);
+            problem.SetParameterLowerBound(theta, 2, -M_PI/4);
+            problem.SetParameterUpperBound(theta, 2,  M_PI/4);
         
             ceres::Solver::Options options;
             options.linear_solver_type = ceres::DENSE_QR;

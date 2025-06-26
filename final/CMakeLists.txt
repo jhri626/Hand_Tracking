@@ -18,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   JointState.msg
+  HandSyncData.msg
 )
 
 generate_messages(

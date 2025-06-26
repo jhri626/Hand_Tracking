@@ -145,7 +145,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     // angle_array.data.resize(fingernum);
 
     latest_angles.clear();
-    latest_angles.resize(2 * fingernum+3);
+    latest_angles.resize(2 * fingernum + 3);
 
     const size_t n = kSpecificIndices.size();
 
@@ -216,7 +216,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     double L1 = (p_thumb_proxi-p_wrist).norm();
     double L2 = (p_thumb_distal-p_thumb_proxi).norm();
 
-    std::cout<<"temp before"<<temp[0]<<","<<temp[1]<<std::endl;
+    // std::cout<<"temp before"<<temp[0]<<","<<temp[1]<<std::endl;
 
     geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[1], pose_array.poses[3]);
 
@@ -353,10 +353,10 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     );
     // std::cout<<"temp :"<<temp<<std::endl;
     Eigen::Vector3d MCP2_avg = (temp+MCP2)/2;
-    m_Index_ik =ik::inversekinematicsIndex(marker_pub, MCP2_ori, MCP2_avg , pose_array.poses[XR_HAND_JOINT_INDEX_DISTAL_EXT], 
-        v4.norm(), v5.norm(), m_Index_ik[0], m_Index_ik[1],m_Index_ik[2], "index");
+    // m_Index_ik =ik::inversekinematicsIndex(marker_pub, MCP2_ori, MCP2_avg , pose_array.poses[XR_HAND_JOINT_INDEX_DISTAL_EXT], 
+    //     v4.norm(), v5.norm(), m_Index_ik[0], m_Index_ik[1],m_Index_ik[2], "index");
 
-    double FE_index_ik = (m_Index_ik[0] + m_Index_ik[1]) * 180 / M_PI;
+    // double FE_index_ik = (m_Index_ik[0] + m_Index_ik[1]) * 180 / M_PI;
 
     /*
     Index data AA
@@ -373,7 +373,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     double AA_index_geo = geo_index.y();
 
     // ik
-    double AA_index_ik = m_Index_ik[2];
+    // double AA_index_ik = m_Index_ik[2];
 
     /*
     Thumb data FE
@@ -461,11 +461,11 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     
     data_index_array.data[0] = FE_index_euler;
     data_index_array.data[1] = FE_index_geo;
-    data_index_array.data[2] = FE_index_ik;
+    // data_index_array.data[2] = FE_index_ik;
     data_index_array.data[3] = AA_index_euler;
     data_index_array.data[4] = AA_index_geo;
     data_index_array.data[5] = AA_index_geo_my;
-    data_index_array.data[6] = AA_index_ik;
+    // data_index_array.data[6] = AA_index_ik;
     
 
     data_thumb_pub.publish(data_thumb_array);

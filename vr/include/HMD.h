@@ -109,7 +109,7 @@ private:
     ros::Publisher                     hand_sync_pub;
 
     // joint
-    std::array<double, 5> joint_queue;
+    std::array<double, 5> AA_joint;
     double gamma;
     int fingernum;
 
