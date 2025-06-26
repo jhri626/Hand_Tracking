@@ -15,8 +15,7 @@ from std_msgs.msg import Float32MultiArray
 from std_msgs.msg import Header
 from scipy.special import erf
 from bone import bone_parents, bone_children   # length 19
-from final.msg import HandSyncData
-
+from vr.msg import HandSyncData
 
 # --------------------------------------------------------------------------- #
 # Configuration
@@ -180,15 +179,15 @@ class InferenceNode(object):
 
         # ROS I/O
         self.pub = rospy.Publisher(OUTPUT_TOPIC, Float32MultiArray, queue_size=1)
-        rospy.Subscriber(INPUT_TOPIC, PoseArray, self.callback)
+        rospy.Subscriber(INPUT_TOPIC, HandSyncData, self.callback)
         rospy.loginfo('Node ready - waiting for %s', INPUT_TOPIC)
 
     # --------------------------------------------------------------------- #
     def _flatten_posearray(self, msg):
         """PoseArray -> flat list of 60 floats (skip KEYWORDS joints)."""
         data = []
-        ori = msg.poses[0].orientation
-        data.extend([ori.x, ori.y, ori.z, ori.w])
+        # ori = msg.poses[0].orientation
+        # data.extend([ori.x, ori.y, ori.z, ori.w])
 
         for idx, p in enumerate(msg.poses):
             if idx in KEYWORDS:
@@ -206,24 +205,27 @@ class InferenceNode(object):
     def callback(self, msg):
         try:
             x_flat = self._flatten_posearray(msg.pose_array)[None, :]             # (1,60)
-            x_flat.extend(msg.angles[-3:])
+            extra = np.array(msg.angles[-3:], dtype=np.float32).reshape(1, 3)
+            x_flat = np.concatenate([x_flat, extra], axis=1)
+
 
             if x_flat.shape[1] != NUM_JOINTS * 3 + 3:
                 rospy.logwarn('Unexpected input length %d', x_flat.shape[1])
                 return
 
-            out = self.model.forward(x_flat)                           # (1,8)
-            final_out = msg.angles.tolist()
-            final_out[1:4] = 0.5* (final_out[1:4] + out)
+            out = self.model.forward(x_flat)                           # (1,3)
+            final_out = np.array(msg.angles[:-3], dtype=np.float32).reshape(8)
+            final_out[1:4] = 0. * final_out[1:4] + 1.0 * out.reshape(3)
+            
             
             
             if self.ema is None:
-                self.ema = out.copy()
+                self.ema = final_out.copy()
             else:
                 self.ema = self.ema_alpha * final_out + (1.0 - self.ema_alpha) * self.ema
 
             ema_list = self.ema.flatten().tolist()
-            print("pub")
+            
             self.pub.publish(Float32MultiArray(data=ema_list))
 
 
