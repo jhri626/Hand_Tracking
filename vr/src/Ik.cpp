@@ -113,8 +113,8 @@ namespace ik {
             // 2) Compute relative SE(3) and extract translation
             Eigen::Matrix4d T_rel = lie_utils::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
             Eigen::Vector3d target_pos = T_rel.block<3,1>(0,3);
-            std::cout<< "L1 :"<<L1<<", L2 : "<<L2<<std::endl;
-            std::cout<< "Target :"<<target_pos<<std::endl;
+            // std::cout<< "L1 :"<<L1<<", L2 : "<<L2<<std::endl;
+            // std::cout<< "Target :"<<target_pos<<std::endl;
 
             ceres::Problem problem;
             double theta[3] = {theta_init_1,theta_init_2,theta_init_3};
@@ -150,7 +150,7 @@ namespace ik {
             ceres::Solver::Summary summary;
             ceres::Solve(options, &problem, &summary);
             
-            std::cout<< "theta 0 :"<<theta[0]<<", theta 1 : "<< theta[1] <<", theta 2 : "<< theta[2]<<std::endl;
+            // std::cout<< "theta 0 :"<<theta[0]<<", theta 1 : "<< theta[1] <<", theta 2 : "<< theta[2]<<std::endl;
             
             
     
