@@ -145,7 +145,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     // angle_array.data.resize(fingernum);
 
     latest_angles.clear();
-    latest_angles.resize(2 * fingernum);
+    latest_angles.resize(2 * fingernum+3);
 
     const size_t n = kSpecificIndices.size();
 
@@ -223,7 +223,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     Eigen::Vector2d angle =ik::inversekinematics(marker_pub, newaxis, p_wrist , pose_array.poses[XR_HAND_JOINT_THUMB_TIP_EXT], 
         L1, L2, 0 , 0, "thumb");
     
-    std::cout<<angle<<std::endl;
+    // std::cout<<angle<<std::endl;
     // std::cout<<angle_array.data[fingernum]<<" "<<angle_array.data[0]<<std::endl;
     
     // std::cout << "FE and AA angle : "<< 0 << std::endl;
@@ -277,15 +277,15 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     for (int i =1; i < 4 ;i++)
     {
         geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*(i-1)]], pose_array.poses[list[2*(i-1)+1]]);
-        std::cout << "Euler angles (degrees): " <<i+1<< std::endl;
-        std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
-                << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
-                << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
+        // std::cout << "Euler angles (degrees): " <<i+1<< std::endl;
+        // std::cout << "Roll: "  << euler_angles.x * 180.0 / M_PI 
+                // << ", Pitch: " << euler_angles.y * 180.0 / M_PI 
+                // << ", Yaw: "  << euler_angles.z * 180.0 / M_PI << std::endl;
 
         Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[1+5*i],pose_array.poses[2+5*i],pose_array.poses[3+5*i]);
-        std::cout << "FE and AA angle"<< std::endl;
-        std::cout << "FE: "  << angle.x() 
-                << ", AA: "  << angle.y()  << std::endl;
+        // std::cout << "FE and AA angle"<< std::endl;
+        // std::cout << "FE: "  << angle.x() 
+                // << ", AA: "  << angle.y()  << std::endl;
                 // angle_array.data[i+3] = angle.x();
                 // angle_array.data[i] = angle.y();
                 // angle_array.data[i+fingernum] = euler_angles.x * 180.0 / M_PI ; // FE
@@ -351,7 +351,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
         pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT ].orientation.y,
         pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT ].orientation.z
     );
-    std::cout<<"temp :"<<temp<<std::endl;
+    // std::cout<<"temp :"<<temp<<std::endl;
     Eigen::Vector3d MCP2_avg = (temp+MCP2)/2;
     m_Index_ik =ik::inversekinematicsIndex(marker_pub, MCP2_ori, MCP2_avg , pose_array.poses[XR_HAND_JOINT_INDEX_DISTAL_EXT], 
         v4.norm(), v5.norm(), m_Index_ik[0], m_Index_ik[1],m_Index_ik[2], "index");
@@ -420,6 +420,27 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     //ik
     double AA_thumb_ik = angle.y() * 180.0 / M_PI;
 
+    
+    
+
+    geometry_msgs::Pose I;
+    I.position.x = 0;
+    I.position.y = 0;
+    I.position.z = 0;
+    
+    I.orientation.x = 0; 
+    I.orientation.y = -std::sqrt(0.5);
+    I.orientation.z = std::sqrt(0.5);
+    I.orientation.w = 0;
+    
+    geometry_msgs::Vector3 euler = pose_utils::poseToEulerAngles(I,pose_array.poses[XR_HAND_JOINT_PALM_EXT]);
+
+    latest_angles[2*fingernum] = euler.x;
+    latest_angles[2*fingernum + 1] = euler.y;
+    latest_angles[2*fingernum + 2] = euler.z;
+    
+
+
 
     vr::HandSyncData sync_msg;
     sync_msg.header.stamp = stamp;
@@ -428,7 +449,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     sync_msg.pose_array.header.stamp = stamp;
     sync_msg.pose_array.header.frame_id = "hmd_frame";
     sync_msg.angles = latest_angles;
-    // sync_msg.trigger_flag = checkUserInput();
+    sync_msg.trigger_flag = checkUserInput();
     
     hand_sync_pub.publish(sync_msg);
 
@@ -452,7 +473,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     // hand_pose_pub.publish(pose_array);
     // hand_angle_pub.publish(angle_array);
     // std::this_thread::sleep_for(std::chrono::milliseconds(100)); //for debug erase it
-    std::cout << "\033[2J\033[H";
+    // std::cout << "\033[2J\033[H";
     // std::this_thread::sleep_for(std::chrono::milliseconds(16));
 }
 
