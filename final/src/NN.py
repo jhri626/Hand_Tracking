@@ -16,11 +16,13 @@ from std_msgs.msg import Header
 from scipy.special import erf
 from bone import bone_parents, bone_children   # length 19
 from vr.msg import HandSyncData
+from scipy.signal import butter, lfilter, lfilter_zi
+
 
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/model_weights.npz'
+MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/euler_epoch1000.npz'
 
 NUM_JOINTS = 20
 NUM_BONES  = 19
@@ -172,6 +174,19 @@ class InferenceNode(object):
             rospy.signal_shutdown('Cannot continue without weights')
             return
         
+        # --- Butterworth filter design ----------------------------------
+        order      = 2        # 2nd-order IIR
+        fs         = 60.0     # Callback frequency (Hz)
+        fc         = 10.0      # filtter frequency (Hz)
+        nyq        = 0.5 * fs
+        normal_cut = fc / nyq
+
+        # IIR factor compute
+        self.b, self.a = butter(order, normal_cut, btype='low', analog=False)
+        zi_base       = lfilter_zi(self.b, self.a)
+        # inintialize for 3d vector
+        self.zi_filter = [zi_base * 0.0 for _ in range(3)]
+        
         # Exponential Moving Average parameters
         # smoothing factor alpha: higher -> output tracks new values more closely
         self.ema_alpha = 0.5
@@ -214,19 +229,29 @@ class InferenceNode(object):
                 return
 
             out = self.model.forward(x_flat)                           # (1,3)
-            final_out = np.array(msg.angles[:-3], dtype=np.float32).reshape(8)
-            final_out[1:4] = 0. * final_out[1:4] + 1.0 * out.reshape(3)
-            
-            
-            
-            if self.ema is None:
-                self.ema = final_out.copy()
-            else:
-                self.ema = self.ema_alpha * final_out + (1.0 - self.ema_alpha) * self.ema
+            out_vec = out.flatten()  # shape (3,)
 
-            ema_list = self.ema.flatten().tolist()
-            
-            self.pub.publish(Float32MultiArray(data=ema_list))
+            filtered = np.zeros_like(out_vec)
+            for i in range(3):
+                y, self.zi_filter[i] = lfilter(
+                    self.b, self.a,
+                    [out_vec[i]],
+                    zi=self.zi_filter[i]
+                )
+                filtered[i] = y[0]
+
+            if self.ema is None:
+                self.ema = filtered.copy()
+            else:
+                self.ema = (
+                    self.ema_alpha * filtered
+                    + (1.0 - self.ema_alpha) * self.ema
+                )
+
+            final_out = np.array(msg.angles[:-3], dtype=np.float32).reshape(8)
+            final_out[1:4] = self.ema
+    
+            self.pub.publish(Float32MultiArray(data=final_out.tolist()))
 
 
         except Exception as e:
