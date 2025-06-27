@@ -89,11 +89,11 @@ namespace ik {
         newproxi = q_ref.toRotationMatrix() * newproxi;
 
 
-        // pub.publish(vectorToArrowMarker(p_ref,proxi,"world","v1",1,1,0,0));
-        // pub.publish(vectorToArrowMarker(p_ref+proxi,newproxi-proxi,"world","v1",2,0,1,0));
         return Eigen::Vector2d(theta[0], theta[1]);
         }
     }
+
+    /* Not used in now
 
     Eigen::Vector3d inversekinematicsIndex(const ros::Publisher& pub, const Eigen::Quaterniond q_ref, const Eigen::Vector3d p_ref,
         const geometry_msgs::Pose& pose_target,double L1, double L2, double theta_init_1,double theta_init_2, double theta_init_3, const std::string& mode)
@@ -207,4 +207,6 @@ namespace ik {
         // std::cout<<"work?"<<std::endl;
 
         // 4) Return optimized angles
+
+        */
 }
