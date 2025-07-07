@@ -1,92 +1,108 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import rospy
 from std_msgs.msg import Float32MultiArray
 from std_srvs.srv import Trigger, TriggerResponse
+from typing import List, Optional
 
-# Global variable to store the latest angle array received from /angle topic
-latest_angles = None
-# List to store recorded reference points (each is an entire angle array) - maximum 3 points
-recorded_points = []
-
-def angle_callback(msg):
+class PointRecorder:
     """
-    Callback for /angle topic.
-    Stores the entire array from the Float32MultiArray message as the current angle data.
+    PointRecorder node:
+    - Subscribes to '/model_out' topic to receive angle arrays.
+    - Provides a Trigger service 'record_point' to record averaged reference points.
+    - Records up to 5 reference points and stores them on the ROS Parameter Server under 'calibration/recorded_points'.
     """
-    global latest_angles
-    if msg.data:
-        # Copy the entire array
-        latest_angles = list(msg.data)
-        rospy.loginfo("Received angle array: %s", latest_angles)
-    else:
-        rospy.logwarn("Received an empty angle array.")
 
-def record_point_callback(req):
-    """
-    Service callback:
-    Records the current angle array as a reference point and saves the updated list to the ROS Parameter Server.
-    """
-    global latest_angles, recorded_points
-    if latest_angles is None:
-        return TriggerResponse(success=False, message="No angle data received yet.")
+    def __init__(self):
+        # Hardcoded configurations
+        self.topic_name: str = '/model_out'
+        self.service_name: str = 'record_point'
+        self.sample_count: int = 20
+        self.sample_rate_hz: int = 20
+        self.max_points: int = 5
+        self.param_key: str = 'calibration/recorded_points'
 
-    if len(recorded_points) >= 5:
-        return TriggerResponse(success=False, message="Maximum of 5 reference points have already been recorded.")
+        # Internal state
+        self.latest_angles: Optional[List[float]] = None
+        self.recorded_points: List[List[float]] = []
 
-    samples = []
-    sample_count = 20   # Number of samples to average.
-    rate = rospy.Rate(20)  # Sampling at 20 Hz.
-    
-    # Collect 20 samples.
-    while len(samples) < sample_count:
-        if latest_angles is not None:
-            samples.append(list(latest_angles))
-            print([round(x, 6) for x in latest_angles])
-            rospy.loginfo("Collected sample %d: %s", len(samples), latest_angles)
-        rate.sleep()
-    
-    # Compute element-wise average across the collected samples.
-    # zip(*samples) aggregates elements at the same index from all samples.
-    averaged_angles = [sum(angles) / len(angles) for angles in zip(*samples)]
-    recorded_points.append(averaged_angles)
-    print("Calibration {0} : ".format(len(recorded_points)),[round(x, 6) for x in averaged_angles])
+        # Subscriber for angle data
+        self.subscriber = rospy.Subscriber(
+            self.topic_name, Float32MultiArray, self.angle_callback
+        )
+        # Service to record a calibration point
+        self.service = rospy.Service(
+            self.service_name, Trigger, self.handle_record_point
+        )
 
-    rospy.loginfo("Recorded point %d: %s", len(recorded_points), averaged_angles)
-    
-    # Save calibration points to the ROS parameter server under key 'calibration/recorded_points'
-    rospy.set_param('calibration/recorded_points', recorded_points)
-    
-    response_message = "Reference point recorded successfully. Total recorded points: {0}".format(len(recorded_points))
-    
-    rospy.loginfo("All recorded calibration points: %s", averaged_angles)
-    response_message += " (Calibration points recorded: " + str(averaged_angles) + ")"
-    if len(recorded_points) == 5:
-        response_message += " Calibration end! "
-    
-    return TriggerResponse(success=True, message=response_message)
+        rospy.loginfo(
+            "PointRecorder initialized: topic='%s', service='%s', sample_count=%d, max_points=%d",
+            self.topic_name, self.service_name, self.sample_count, self.max_points
+        )
+
+    def angle_callback(self, msg: Float32MultiArray) -> None:
+        """
+        Callback for '/model_out' topic.
+        Stores the latest incoming angle array.
+        """
+        if not msg.data:
+            rospy.logwarn("Received empty angle array on '%s'.", self.topic_name)
+            return
+
+        # Copy data to avoid aliasing issues
+        self.latest_angles = list(msg.data)
+        rospy.logdebug("Updated latest_angles: %s", self.latest_angles)
+
+    def handle_record_point(self, req: Trigger.Request = None) -> TriggerResponse:
+        """
+        Service callback to record an averaged angle array as a new reference point.
+        """
+        if self.latest_angles is None:
+            return TriggerResponse(success=False, message="No angle data received yet.")
+
+        if len(self.recorded_points) >= self.max_points:
+            msg = f"Maximum of {self.max_points} reference points reached."
+            return TriggerResponse(success=False, message=msg)
+
+        samples: List[List[float]] = []
+        rate = rospy.Rate(self.sample_rate_hz)
+
+        rospy.loginfo("Collecting %d samples at %d Hz.", self.sample_count, self.sample_rate_hz)
+        while len(samples) < self.sample_count and not rospy.is_shutdown():
+            if self.latest_angles:
+                samples.append(self.latest_angles.copy())
+                rospy.logdebug("Sample %d: %s", len(samples), self.latest_angles)
+            rate.sleep()
+
+        if not samples:
+            return TriggerResponse(success=False, message="Failed to collect any samples.")
+
+        # Compute element-wise average across collected samples
+        averaged = [sum(values) / len(values) for values in zip(*samples)]
+
+        self.recorded_points.append(averaged)
+        # Save all recorded points to the ROS Parameter Server
+        rospy.set_param(self.param_key, self.recorded_points)
+
+        idx = len(self.recorded_points)
+        rospy.loginfo("Recorded point %d: %s", idx, averaged)
+
+        response_msg = (
+            f"Reference point {idx}/{self.max_points} recorded successfully."
+            f" Values: {[round(v, 6) for v in averaged]}"
+        )
+        if idx == self.max_points:
+            response_msg += " Calibration complete."
+
+        return TriggerResponse(success=True, message=response_msg)
+
 
 def main():
     """
-    Main function to initialize the node, subscribe to /angle topic, and create the record_point service.
+    Initialize ROS node and start the PointRecorder.
     """
     rospy.init_node('point_recorder', anonymous=False)
-    
-    # Subscribe to /angle topic, expected message type is Float32MultiArray
-    # rospy.Subscriber('/raw_hand_angles', Float32MultiArray, angle_callback)
-
-    # using model
-    rospy.Subscriber('/model_out', Float32MultiArray, angle_callback)
-    
-    # Create a service server with the Trigger service type to record a calibration point on demand
-    rospy.Service('record_point', Trigger, record_point_callback)
-    
-    rospy.loginfo("Point recorder node started. Waiting for angle data and service calls to record calibration points.")
+    recorder = PointRecorder()
     rospy.spin()
 
 if __name__ == '__main__':
     main()
-
-    # enter at ternimal -> rosservice call /record_point "{}"
-    # 1 is init, 2 is extend 3 is grap
-    # TODO : add more cali points
-

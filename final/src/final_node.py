@@ -6,7 +6,6 @@ from std_msgs.msg import Header
 from std_msgs.msg import Float64
 import numpy as np
 
-global cali_points
 
 class Finalnode:
     def __init__(self):
@@ -21,6 +20,7 @@ class Finalnode:
         self.AA_prev = np.zeros(4)
         self.FE_max_delta = 0.1
         self.AA_max_delta = 0.05
+        self.collision_margin = 0.2
 
         
         # Check if the calibration parameter exists and retrieve it
@@ -29,55 +29,86 @@ class Finalnode:
             rospy.loginfo("Loaded calibration points: %s", self.cali_points)
             
         else:
-            rospy.logwarn("Calibration points not found on the parameter server.")
+            rospy.logerr("Calibration points not found on the parameter server.")
+            
 
 
-    def callback(self, msg):
-        init_pos = np.array(self.cali_points[0])
-        extent_pos = np.array(self.cali_points[1])
-        good_pos = np.array(self.cali_points[2])
-        thumb_pos = np.array(self.cali_points[3])
-        sphere_pos = np.array(self.cali_points[4])
-
+    def callback(self, msg: Float32MultiArray) -> None:
+        # Convert incoming Float32MultiArray message to a NumPy array
         raw_data = np.array(msg.data)
-        FE = np.zeros(4)
-        FE[0] = 1.3*(raw_data[4]-init_pos[4])/(thumb_pos[4]-init_pos[4])
-        FE[1:] = 1.3*(raw_data[5:]-init_pos[5:])/(good_pos[5:]-init_pos[5:])
-        FE = np.clip(FE,np.zeros(4),1.3*np.ones(4))
-        
-        # FE = np.zeros(3)
-        FE_adjusted = np.zeros_like(FE)
-        for i in range(len(FE)):
-            delta = np.clip(FE[i] - self.FE_prev[i], -self.FE_max_delta, self.FE_max_delta)
-            FE_adjusted[i] = self.FE_prev[i] + delta
-        self.FE_prev = FE_adjusted
 
+        # Compute flexion/extension (FE) based on calibration points
+        fe = self.compute_fe(raw_data)
 
-        self.FE_prev = FE_adjusted
+        # Compute abduction/adduction (AA) based on calibration points
+        aa = self.compute_aa(raw_data)
 
+        # Apply rate limiting (delta clamp) to FE and AA
+        fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
+        aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
 
-        diff=np.zeros(4)
-        diff[0] = sphere_pos[0]-init_pos[0]
-        diff[1:] = extent_pos[1:4]-init_pos[1:4]
-        threshold = 15 # TODO : This is heuristic minimum value!!!! fix it later
-        AA = np.zeros(4)
-        ratio = (raw_data[:4]-init_pos[:4])/np.abs(np.where(np.abs(diff) < threshold, np.sign(diff) * threshold, diff))
-        AA = 0.5*np.tanh(np.sign(ratio)*ratio**2)
-        # AA[3] = - AA[3]
+        # Update previous state for next iteration
+        self.FE_prev = fe_adjusted.copy()
+        self.AA_prev = aa_adjusted.copy()
 
-        AA_adjusted = np.zeros_like(AA)
-        for i in range(len(AA)):
-            delta = np.clip(AA[i] - self.AA_prev[i], -self.AA_max_delta, self.AA_max_delta)
-            AA_adjusted[i] = self.AA_prev[i] + delta
-        self.AA_prev = AA_adjusted
+        # Apply finger-collision avoidance adjustments to AA
+        aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
 
-        combined = np.concatenate((AA_adjusted, FE_adjusted)).astype(np.float64)
-        
+        # Concatenate AA and FE into a single command array
+        combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
+
+        # Publish JointState message (unchanged as requested)
         joint_8 = JointState()
         joint_8.header = Header()
         joint_8.position = combined.tolist()
 
         self.pub.publish(joint_8)
+        
+    def compute_fe(self, raw: np.ndarray) -> np.ndarray:
+        """Compute flexion/extension values from raw sensor data."""
+        init = np.array(self.cali_points[0])
+        thumb = np.array(self.cali_points[4])
+        good  = np.array(self.cali_points[2])
+        fe = np.zeros(4)
+        fe[0]  = 1.3 * (raw[4]    - init[4])    / (thumb[4] - init[4])
+        fe[1:] = 1.3 * (raw[5:]   - init[5:])   / (good[5:]  - init[5:])
+        return np.clip(fe, 0.0, 1.3)
+
+    def compute_aa(self, raw: np.ndarray) -> np.ndarray:
+        """Compute abduction/adduction values from raw sensor data."""
+        init   = np.array(self.cali_points[0])
+        extent = np.array(self.cali_points[1])
+        sphere = np.array(self.cali_points[4])
+        diff = np.zeros(4)
+        diff[0]  = sphere[0] - init[0]
+        diff[1:] = extent[1:] - init[1:]
+        threshold = rospy.get_param('~min_diff_threshold', 15)
+        denom = np.where(np.abs(diff) < threshold,
+                        np.sign(diff) * threshold,
+                        diff)
+        ratio = (raw[:4] - init[:4]) / np.abs(denom)
+        return 0.5 * np.tanh(np.sign(ratio) * ratio**2)
+
+    @staticmethod
+    def apply_delta_clamp(values: np.ndarray, prev: np.ndarray, max_delta: float) -> np.ndarray:
+        """Limit the change rate between consecutive values."""
+        delta = np.clip(values - prev, -max_delta, max_delta)
+        return prev + delta
+
+    def apply_collision_avoidance(self, aa: np.ndarray) -> np.ndarray:
+        """Prevent finger collisions by enforcing minimum margins."""
+        margin = self.collision_margin
+        # Index vs Middle
+        if aa[1] - aa[2] < margin:
+            aa[1] = aa[2] + margin
+            rospy.logwarn("Index AA clipped to avoid collision")
+        # Ring vs Middle
+        if aa[3] - aa[2] > margin:
+            aa[3] = aa[2] + margin
+            rospy.logwarn("Ring AA clipped to avoid collision")
+        return aa
+
+
 
 if __name__ == '__main__':
     node = Finalnode()
