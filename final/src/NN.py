@@ -10,9 +10,7 @@ Flow:
 
 import rospy
 import numpy as np
-from geometry_msgs.msg import PoseArray
 from std_msgs.msg import Float32MultiArray
-from std_msgs.msg import Header
 from scipy.special import erf
 from bone import bone_parents, bone_children   # length 19
 from vr.msg import HandSyncData

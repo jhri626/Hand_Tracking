@@ -31,7 +31,7 @@ def record_point_callback(req):
         return TriggerResponse(success=False, message="No angle data received yet.")
 
     if len(recorded_points) >= 5:
-        return TriggerResponse(success=False, message="Maximum of 3 reference points have already been recorded.")
+        return TriggerResponse(success=False, message="Maximum of 5 reference points have already been recorded.")
 
     samples = []
     sample_count = 20   # Number of samples to average.
