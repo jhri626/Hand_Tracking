@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import rospy
 from std_msgs.msg import Float32MultiArray
 from sensor_msgs.msg import JointState
@@ -13,7 +13,7 @@ class Finalnode:
         Main function to initialize the node and retrieve calibration data from the ROS Parameter Server.
         """
         rospy.init_node('calibration_user', anonymous=False)
-        self.pub = rospy.Publisher("/hand_joint_command",JointState,queue_size=1)
+        self.pub = rospy.Publisher("/hand_joint_command", JointState, queue_size=1)
         self.sub = rospy.Subscriber('/model_out', Float32MultiArray, self.callback)
 
         self.FE_prev = np.zeros(4)
@@ -22,18 +22,15 @@ class Finalnode:
         self.AA_max_delta = 0.05
         self.collision_margin = 0.2
 
-        
         # Check if the calibration parameter exists and retrieve it
         if rospy.has_param('calibration/recorded_points'):
             self.cali_points = rospy.get_param('calibration/recorded_points')
             rospy.loginfo("Loaded calibration points: %s", self.cali_points)
-            
         else:
             rospy.logerr("Calibration points not found on the parameter server.")
-            
 
 
-    def callback(self, msg: Float32MultiArray) -> None:
+    def callback(self, msg):
         # Convert incoming Float32MultiArray message to a NumPy array
         raw_data = np.array(msg.data)
 
@@ -64,7 +61,7 @@ class Finalnode:
 
         self.pub.publish(joint_8)
         
-    def compute_fe(self, raw: np.ndarray) -> np.ndarray:
+    def compute_fe(self, raw):
         """Compute flexion/extension values from raw sensor data."""
         init = np.array(self.cali_points[0])
         thumb = np.array(self.cali_points[4])
@@ -74,14 +71,15 @@ class Finalnode:
         fe[1:] = 1.3 * (raw[5:]   - init[5:])   / (good[5:]  - init[5:])
         return np.clip(fe, 0.0, 1.3)
 
-    def compute_aa(self, raw: np.ndarray) -> np.ndarray:
+    def compute_aa(self, raw):
         """Compute abduction/adduction values from raw sensor data."""
         init   = np.array(self.cali_points[0])
         extent = np.array(self.cali_points[1])
         sphere = np.array(self.cali_points[4])
         diff = np.zeros(4)
+        
         diff[0]  = sphere[0] - init[0]
-        diff[1:] = extent[1:] - init[1:]
+        diff[1:] = extent[1:4] - init[1:4]
         threshold = rospy.get_param('~min_diff_threshold', 15)
         denom = np.where(np.abs(diff) < threshold,
                         np.sign(diff) * threshold,
@@ -90,24 +88,23 @@ class Finalnode:
         return 0.5 * np.tanh(np.sign(ratio) * ratio**2)
 
     @staticmethod
-    def apply_delta_clamp(values: np.ndarray, prev: np.ndarray, max_delta: float) -> np.ndarray:
+    def apply_delta_clamp(values, prev, max_delta):
         """Limit the change rate between consecutive values."""
         delta = np.clip(values - prev, -max_delta, max_delta)
         return prev + delta
 
-    def apply_collision_avoidance(self, aa: np.ndarray) -> np.ndarray:
+    def apply_collision_avoidance(self, aa):
         """Prevent finger collisions by enforcing minimum margins."""
         margin = self.collision_margin
         # Index vs Middle
-        if aa[1] - aa[2] < margin:
-            aa[1] = aa[2] + margin
+        if aa[2] - aa[1] > margin:
+            aa[1] = aa[2] - margin
             rospy.logwarn("Index AA clipped to avoid collision")
         # Ring vs Middle
         if aa[3] - aa[2] > margin:
             aa[3] = aa[2] + margin
             rospy.logwarn("Ring AA clipped to avoid collision")
         return aa
-
 
 
 if __name__ == '__main__':

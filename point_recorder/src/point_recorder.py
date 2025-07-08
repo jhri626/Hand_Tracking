@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 import rospy
 from std_msgs.msg import Float32MultiArray
 from std_srvs.srv import Trigger, TriggerResponse
-from typing import List, Optional
 
 class PointRecorder:
     """
@@ -13,19 +12,19 @@ class PointRecorder:
     """
 
     def __init__(self):
-        # Hardcoded configurations
-        self.topic_name: str = '/model_out'
-        self.service_name: str = 'record_point'
-        self.sample_count: int = 20
-        self.sample_rate_hz: int = 20
-        self.max_points: int = 5
-        self.param_key: str = 'calibration/recorded_points'
+        # Hardcoded configurations for Python 2.7 compatibility
+        self.topic_name = '/model_out'
+        self.service_name = 'record_point'
+        self.sample_count = 20
+        self.sample_rate_hz = 20
+        self.max_points = 5
+        self.param_key = 'calibration/recorded_points'
 
         # Internal state
-        self.latest_angles: Optional[List[float]] = None
-        self.recorded_points: List[List[float]] = []
+        self.latest_angles = None
+        self.recorded_points = []
 
-        # Subscriber for angle data
+        # Subscriber for angle data\        
         self.subscriber = rospy.Subscriber(
             self.topic_name, Float32MultiArray, self.angle_callback
         )
@@ -39,7 +38,7 @@ class PointRecorder:
             self.topic_name, self.service_name, self.sample_count, self.max_points
         )
 
-    def angle_callback(self, msg: Float32MultiArray) -> None:
+    def angle_callback(self, msg):
         """
         Callback for '/model_out' topic.
         Stores the latest incoming angle array.
@@ -50,9 +49,9 @@ class PointRecorder:
 
         # Copy data to avoid aliasing issues
         self.latest_angles = list(msg.data)
-        rospy.logdebug("Updated latest_angles: %s", self.latest_angles)
+        rospy.loginfo("Updated latest_angles: %s", self.latest_angles)
 
-    def handle_record_point(self, req: Trigger.Request = None) -> TriggerResponse:
+    def handle_record_point(self, req):
         """
         Service callback to record an averaged angle array as a new reference point.
         """
@@ -60,16 +59,16 @@ class PointRecorder:
             return TriggerResponse(success=False, message="No angle data received yet.")
 
         if len(self.recorded_points) >= self.max_points:
-            msg = f"Maximum of {self.max_points} reference points reached."
+            msg = "Maximum of %d reference points reached." % self.max_points
             return TriggerResponse(success=False, message=msg)
 
-        samples: List[List[float]] = []
+        samples = []
         rate = rospy.Rate(self.sample_rate_hz)
 
         rospy.loginfo("Collecting %d samples at %d Hz.", self.sample_count, self.sample_rate_hz)
         while len(samples) < self.sample_count and not rospy.is_shutdown():
             if self.latest_angles:
-                samples.append(self.latest_angles.copy())
+                samples.append(self.latest_angles[:])
                 rospy.logdebug("Sample %d: %s", len(samples), self.latest_angles)
             rate.sleep()
 
@@ -77,7 +76,12 @@ class PointRecorder:
             return TriggerResponse(success=False, message="Failed to collect any samples.")
 
         # Compute element-wise average across collected samples
-        averaged = [sum(values) / len(values) for values in zip(*samples)]
+        averaged = []
+        for i in range(len(samples[0])):
+            total = 0.0
+            for s in samples:
+                total += s[i]
+            averaged.append(total / len(samples))
 
         self.recorded_points.append(averaged)
         # Save all recorded points to the ROS Parameter Server
@@ -86,10 +90,10 @@ class PointRecorder:
         idx = len(self.recorded_points)
         rospy.loginfo("Recorded point %d: %s", idx, averaged)
 
-        response_msg = (
-            f"Reference point {idx}/{self.max_points} recorded successfully."
-            f" Values: {[round(v, 6) for v in averaged]}"
-        )
+        # Format values to 6 decimal places
+        values_str = ["%.6f" % v for v in averaged]
+        response_msg = ("Reference point %d/%d recorded successfully. Values: %s" 
+                       % (idx, self.max_points, values_str))
         if idx == self.max_points:
             response_msg += " Calibration complete."
 
@@ -97,12 +101,11 @@ class PointRecorder:
 
 
 def main():
-    """
-    Initialize ROS node and start the PointRecorder.
-    """
     rospy.init_node('point_recorder', anonymous=False)
     recorder = PointRecorder()
     rospy.spin()
 
 if __name__ == '__main__':
     main()
+
+    # enter at ternimal -> rosservice call /record_point "{}"
