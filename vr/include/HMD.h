@@ -104,6 +104,7 @@ private:
 
     // joint
     std::array<double, 5> AA_joint;
+    std::array<double, 5> FE_joint;
     double gamma;
     int fingernum;
 

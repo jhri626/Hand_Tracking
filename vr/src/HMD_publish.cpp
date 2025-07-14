@@ -231,21 +231,25 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
 
     // thumb
 
-    latest_angles[fingernum] = - angle.x() * 180.0 / M_PI  ; // FE
-    AA_joint[0] = gamma * AA_joint[0] + (1-gamma)* angle.y()* 180.0 / M_PI ;
+    
+    AA_joint[0] = gamma * AA_joint[0] + (1-gamma) * angle.y() * 180.0 / M_PI ;
+    FE_joint[0] = gamma * FE_joint[0] + (1-gamma) * - angle.x() * 180.0 / M_PI ;
     latest_angles[0] = AA_joint[0] ; // AA
+    latest_angles[fingernum] = FE_joint[0]  ; // FE
 
     // Ensure our angle array is sized for all fingers (AA + FE for each)
 
-    //others
 
     for (int i =1; i < 4 ;i++)
     {
         geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*(i-1)]], pose_array.poses[list[2*(i-1)+1]]);
         Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[1+5*i],pose_array.poses[2+5*i],pose_array.poses[3+5*i]);
-                latest_angles[i+fingernum] = euler_angles.x * 180.0 / M_PI ; // FE
+                
+                if (std::isnan(euler_angles.x)) euler_angles.x = 0.0;
                 AA_joint[i] = gamma * AA_joint[i] + (1-gamma) * angle.y() ;
+                FE_joint[i] = gamma * FE_joint[i] + (1-gamma) * euler_angles.x * 180.0 / M_PI ;
                 latest_angles[i] = AA_joint[i] ; // AA
+                latest_angles[i+fingernum] = FE_joint[i] ; // FE
         }
     
 

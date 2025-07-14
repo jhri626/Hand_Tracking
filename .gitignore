@@ -1,4 +1,7 @@
-**/.vscode
 **/third_party/
-*/.pyc
-
+*.pyc
+**/.vscode/
+*.rst
+__pycache__/
+*.py[cod]
+*$py.class
