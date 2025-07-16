@@ -1,0 +1,12 @@
+<launch>
+    <arg name="node_start_delay" default="0.2" />  
+
+    <node name="mujoco_ros" pkg="mujoco_ros" type="mujoco_ros" output="screen" required="true" launch-prefix="bash -c 'sleep $(arg node_start_delay); $0 $@' ">
+        <param name="use_shm" value="false" />
+        <param name="model_file" type="string" value="$(find hand_urdf_description)/meshes/hand_urdf.xml" />
+    </node>
+
+    <node name="hand_urdf_description" pkg="hand_urdf_description" type="controller.py" output="screen">
+    </node>
+
+</launch>

@@ -5,3 +5,14 @@
 __pycache__/
 *.py[cod]
 *$py.class
+build/
+data/
+devel/
+.catkin_workspace
+others/
+*.pth
+*.csv
+*.npz
+*.pt
+*.zip
+*.pkl

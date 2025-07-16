@@ -1,6 +1,0 @@
-<launch>
-    <node pkg="glovehand" type="publish_test" name="publish_test" output="screen"/>
-    <node pkg="glovehand" type="subscribe_test" name="subscribe_test" output="screen"/>
-    <node pkg="glovehand" type="glove_callback" name="glove_callback" output="screen"/>
-    <node pkg="glovehand" type="motor_test" name="motor_test" output="screen"/>
-</launch>

@@ -1,0 +1,3 @@
+[submodule "hand_urdf_discription"]
+	path = hand_urdf_discription
+	url = https://github.com/Hokyun-Lee/hand_urdf_discription.git
