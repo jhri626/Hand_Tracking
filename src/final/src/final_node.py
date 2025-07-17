@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import rospy
-from std_msgs.msg import Float32MultiArray, Float64MultiArray
+from std_msgs.msg import Float32MultiArray, Float64MultiArray, Int16MultiArray
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Header
 import numpy as np
@@ -37,6 +37,9 @@ PROTOCOL_VERSION            = 2
 DXL_ID = [131,132,133,134,135,136,137,138]
 DXL_ID_FE = [132,134,136,138]
 DXL_ID_AA = [131,133,135,137]
+CurLimit_FE = [450, 700, 450, 450]
+CurLimit_AA = [400, 400, 400, 400]
+CurLimit = CurLimit_AA + CurLimit_FE
 
 BAUDRATE                    = 3000000
 DEVICENAME                  = "COM9" #.encode('utf-8')        # Check which port is being used on your controller
@@ -52,7 +55,7 @@ NUM_FINGER				= 4
 NUM_JOINT				= 8
 
 init_fe = [0,0,0,0]
-init_aa = [1700, 2000, 2000, 2000]
+init_aa = [1700, 2000, 2000, 2055]
 
 pos = [0,0,0,0]
 vel = [0,0,0,0]
@@ -79,6 +82,7 @@ class Finalnode:
         self.initialized = False
         self.pub = rospy.Publisher("/hand_joint_command", JointState, queue_size=1)
         self.motor_pub = rospy.Publisher('/motor_values', Float64MultiArray, queue_size=1)
+        self.current_pub = rospy.Publisher('/current_state', Float32MultiArray, queue_size = 1)
         self.sub = rospy.Subscriber('/model_out', Float32MultiArray, self.callback)
         
 
@@ -89,6 +93,7 @@ class Finalnode:
         self.FE_max_delta = 0.1
         self.AA_max_delta = 0.05
         self.collision_margin = 0.2
+        self.joint_currents = np.zeros(NUM_JOINT,dtype=np.int16)
 
         # Check if the calibration parameter exists and retrieve it
         if rospy.has_param('calibration/recorded_points'):
@@ -96,6 +101,10 @@ class Finalnode:
             rospy.loginfo("Loaded calibration points: %s", self.cali_points)
         else:
             rospy.logerr("Calibration points not found on the parameter server.")
+            self.disable_torque_all()
+            rospy.signal_shutdown("Calibration parameters missing")
+            return
+
 
         self.init = np.array(self.cali_points[0])
         self.extent = np.array(self.cali_points[1])
@@ -115,6 +124,14 @@ class Finalnode:
 
         for i in DXL_ID	 :
             self.groupSyncRead.addParam(i)
+
+        self.groupSyncRead_current = dxl.GroupSyncRead(self.portHandler, self.packetHandler, 126, 2)
+        for i in DXL_ID_AA :
+            self.groupSyncRead_current.addParam(i)
+
+        for i in DXL_ID_FE :
+            self.groupSyncRead_current.addParam(i)
+
 
         try: self.portHandler.clearPort()
         except: pass
@@ -137,11 +154,15 @@ class Finalnode:
         for i in DXL_ID_FE :
             self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_OPERATING_MODE , CURRENT_CONTROL_MODE) 
 
-        # AA joint Torque on and init pos
-        for i in DXL_ID_AA:
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
-            self.packetHandler.write4ByteTxRx(self.portHandler, i, ADDR_XL330_GOAL_POSITION , 2000)
+        for i in range(4) : 
+            self.packetHandler.write2ByteTxRx(self.portHandler, DXL_ID_FE[i], ADDR_XL330_CURRENT_LIMIT , CurLimit_FE[i])
 
+
+        # AA joint Torque on and init pos
+        for idx, i in enumerate(DXL_ID_AA):
+            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
+            self.packetHandler.write4ByteTxRx(self.portHandler, i, ADDR_XL330_GOAL_POSITION , init_aa[idx])
+            
         # FE joint Torque on and current init
         for i in DXL_ID_FE:
             self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_DRIVING_MODE, 0)
@@ -194,6 +215,7 @@ class Finalnode:
         # Concatenate AA and FE into a single command array
         combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
         motor_value = self.joint_to_motor(combined)
+        self.read_current()
 
         # Publish JointState message (unchanged as requested)
         joint_8 = JointState()
@@ -296,18 +318,44 @@ class Finalnode:
         if result != dxl.COMM_SUCCESS:
             rospy.logerr("Dynamixel SyncWrite failed: %s",
                         self.packetHandler.getTxRxResult(result))
+            
+    def read_current(self) :
+        dxl_current_result = self.groupSyncRead_current.txRxPacket()
+        for i in range(4) :
+            # print(self.groupSyncRead_current.getData(DXL_ID_AA[i], 126, 1))
+            self.joint_currents[i] = self.groupSyncRead_current.getData(DXL_ID_AA[i], 126, 2)
+        for i in range(4) :
+            self.joint_currents[i+4] = self.groupSyncRead_current.getData(DXL_ID_FE[i], 126, 2)
+        msg= Float32MultiArray()
+        #msg= Int64MultiArray()
+        # print(self.joint_currents)
+        currents_float = self.joint_currents.astype(np.float32)
+        current_stat = currents_float / np.array(CurLimit)
+        msg.data = current_stat
+        # print("topic",current_stat)
+        self.current_pub.publish(msg)
+    
+    def disable_torque_all(self):
+        """
+        Disable torque on all Dynamixel motors. This method is called on node shutdown.
+        """
+        rospy.loginfo("Shutting down: disabling torque on all motors.")
+        for i in DXL_ID:
+            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE, TORQUE_DISABLE)
 
 
 
 if __name__ == '__main__':
-    node = Finalnode()
-    rospy.spin()
-    # TODO : update logic with update cali method
-
-    for i in DXL_ID:
-        node.packetHandler.write1ByteTxRx(node.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_DISABLE)
-
     
+    try:
+        node = Finalnode()
+        rospy.spin()
+    finally:
+        node.disable_torque_all()
+
+    # node.disable_torque_all()
+        
+    # TODO : update logic with update cali method   
     # 1. still pose : basic pose
     # 2. extend pose : extend every finger as much as possible
     # 3. thumbs up pose : bend fingers except thumb

@@ -16,3 +16,4 @@ others/
 *.pt
 *.zip
 *.pkl
+model/plot.ipynb

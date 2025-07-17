@@ -47,7 +47,7 @@ Eigen::Matrix3d vecToso3(const Eigen::Vector3d& vec) {
     so3(1,2) = -vec(0);
     so3(1,0) =  vec(2);
     so3(2,0) = -vec(1);
-    so3(2,1) =  vec(0); // Replicated from original implementation
+    so3(2,1) =  vec(0); 
     return so3;
 }
 

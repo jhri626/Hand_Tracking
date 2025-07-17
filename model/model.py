@@ -5,8 +5,8 @@ from bone import bone_parents, bone_children
 def position_encoding(x, num_freqs):
     """
     Args:
-      x: Tensor[..., D]  입력값
-      num_freqs: int   frequency band 개수 L
+      x: Tensor[..., D]  input
+      num_freqs: int   num of frequency band  L
     Returns:
       Tensor[..., D * 2 * num_freqs]
     """
@@ -14,7 +14,7 @@ def position_encoding(x, num_freqs):
     freqs = 2.0 ** torch.arange(num_freqs, device=x.device) * torch.pi  # [L]
     # [..., D, L]
     x_freq = x * freqs  
-    # sin, cos 각각 [..., D, L]
+    # sin, cos  [..., D, L]
     sin = torch.sin(x_freq)
     cos = torch.cos(x_freq)
     # concat → [..., D, 2L] → flatten → [..., D*2L]

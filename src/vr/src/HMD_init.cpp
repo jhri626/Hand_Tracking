@@ -250,59 +250,148 @@ bool HMD::beginOpenXRSession() {
     return false;
 }
 
-bool HMD::CreateSwapchain() {
+// bool HMD::CreateSwapchain() {
 
-uint32_t formatCount = 0;
-xrEnumerateSwapchainFormats(xrSession, 0, &formatCount, nullptr);
-std::vector<int64_t> formats(formatCount);
-xrEnumerateSwapchainFormats(xrSession, formatCount, &formatCount, formats.data());
+// uint32_t formatCount = 0;
+// xrEnumerateSwapchainFormats(xrSession, 0, &formatCount, nullptr);
+// std::vector<int64_t> formats(formatCount);
+// xrEnumerateSwapchainFormats(xrSession, formatCount, &formatCount, formats.data());
 
-// Choose a compatible format
-int64_t chosenFormat = formats[0]; // Default to the first available format
-for (int64_t format : formats) {
-    if (format == GL_RGBA8 || format == GL_SRGB8_ALPHA8) { 
-        chosenFormat = format;
-        break;
+// // Choose a compatible format
+// int64_t chosenFormat = formats[0]; // Default to the first available format
+// for (int64_t format : formats) {
+//     if (format == GL_RGBA8 || format == GL_SRGB8_ALPHA8) { 
+//         chosenFormat = format;
+//         break;
+//     }
+// }
+
+
+// XrSwapchainCreateInfo swapchainCreateInfo = {};
+// swapchainCreateInfo.type = XR_TYPE_SWAPCHAIN_CREATE_INFO;
+// swapchainCreateInfo.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
+// swapchainCreateInfo.format = chosenFormat ;
+// swapchainCreateInfo.sampleCount = 1;
+// swapchainCreateInfo.width = HMDVariable::SWAPCHAIN_WIDTH;
+// swapchainCreateInfo.height = HMDVariable::SWAPCHAIN_HEIGHT;
+// swapchainCreateInfo.faceCount = 1;
+// swapchainCreateInfo.arraySize = 1;
+// swapchainCreateInfo.mipCount = 1;
+
+// XrResult result = xrCreateSwapchain(xrSession, &swapchainCreateInfo, &xrSwapchain);
+// if (XR_FAILED(result)) {
+//     std::cerr << "Failed to create swapchain"<< result << std::endl;
+//     return XR_NULL_HANDLE;
+// }
+
+// std::cout << "Swapchain created successfully." << std::endl;
+
+// uint32_t imageCount = 0;
+// xrEnumerateSwapchainImages(xrSwapchain, 0, &imageCount, nullptr);
+
+
+// swapchainImages.resize(imageCount, {XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR});
+
+// result = xrEnumerateSwapchainImages(
+//     xrSwapchain,
+//     imageCount,
+//     &imageCount,
+//     reinterpret_cast<XrSwapchainImageBaseHeader*>(swapchainImages.data())
+// );
+// if (XR_FAILED(result)) {
+//     std::cerr << "Failed to enumerate swapchain images: " << result << std::endl;
+//     return false;
+// }
+
+// std::cout << "Swapchain created successfully with " << imageCount << " images." << std::endl;
+// return true;
+// }
+
+// HMD.cpp
+
+bool HMD::CreateSwapchain(uint32_t width,
+                          uint32_t height,
+                          XrSwapchain& outSwapchain,
+                          std::vector<XrSwapchainImageOpenGLKHR>& outImages)
+{
+    
+    uint32_t formatCount = 0;
+    xrEnumerateSwapchainFormats(xrSession, 0, &formatCount, nullptr);
+    std::vector<int64_t> formats(formatCount);
+    xrEnumerateSwapchainFormats(xrSession, formatCount, &formatCount, formats.data());
+
+    
+    int64_t chosenFormat = formats[0];
+    for (auto f : formats) {
+        if (f == GL_SRGB8_ALPHA8 || f == GL_RGBA8) {
+            chosenFormat = f;
+            break;
+        }
     }
+
+    
+    XrSwapchainCreateInfo sci{ XR_TYPE_SWAPCHAIN_CREATE_INFO };
+    sci.usageFlags  = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
+    sci.format      = chosenFormat;
+    sci.sampleCount = 1;
+    sci.width       = width;
+    sci.height      = height;
+    sci.faceCount   = 1;
+    sci.arraySize   = 1;    
+    sci.mipCount    = 1;
+
+    
+    XrResult r = xrCreateSwapchain(xrSession, &sci, &outSwapchain);
+    if (XR_FAILED(r)) {
+        std::cerr << "[error] xrCreateSwapchain: " << r << "\n";
+        return false;
+    }
+
+    
+    uint32_t imageCount = 0;
+    xrEnumerateSwapchainImages(outSwapchain, 0, &imageCount, nullptr);
+
+    
+    outImages.resize(imageCount, { XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR });
+    xrEnumerateSwapchainImages(
+        outSwapchain,
+        imageCount,
+        &imageCount,
+        reinterpret_cast<XrSwapchainImageBaseHeader*>(outImages.data())
+    );
+
+    return true;
 }
 
+bool HMD::InitAllSwapchains() {
+    
+    if (!CreateSwapchain(
+            HMDVariable::SWAPCHAIN_WIDTH,
+            HMDVariable::SWAPCHAIN_HEIGHT,
+            xrSwapchain,
+            swapchainImages))
+    {
+        return false;
+    }
 
-XrSwapchainCreateInfo swapchainCreateInfo = {};
-swapchainCreateInfo.type = XR_TYPE_SWAPCHAIN_CREATE_INFO;
-swapchainCreateInfo.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
-swapchainCreateInfo.format = chosenFormat ;
-swapchainCreateInfo.sampleCount = 1;
-swapchainCreateInfo.width = HMDVariable::SWAPCHAIN_WIDTH;
-swapchainCreateInfo.height = HMDVariable::SWAPCHAIN_HEIGHT;
-swapchainCreateInfo.faceCount = 1;
-swapchainCreateInfo.arraySize = 1;
-swapchainCreateInfo.mipCount = 1;
+    mainWidth  = HMDVariable::SWAPCHAIN_WIDTH;
+    mainHeight = HMDVariable::SWAPCHAIN_HEIGHT;
 
-XrResult result = xrCreateSwapchain(xrSession, &swapchainCreateInfo, &xrSwapchain);
-if (XR_FAILED(result)) {
-    std::cerr << "Failed to create swapchain"<< result << std::endl;
-    return XR_NULL_HANDLE;
-}
-
-std::cout << "Swapchain created successfully." << std::endl;
-
-uint32_t imageCount = 0;
-xrEnumerateSwapchainImages(xrSwapchain, 0, &imageCount, nullptr);
+    
+    for (int i = 0; i < kSmallCount; ++i) {
+        if (!CreateSwapchain(
+                HMDVariable::SWAPCHAIN_WIDTH,
+                HMDVariable::SWAPCHAIN_HEIGHT,
+                smallSwapchains[i],
+                smallImages[i]))
+        {
+            return false;
+        }
+        smallWidth[i]  = HMDVariable::SWAPCHAIN_WIDTH;
+        smallHeight[i] = HMDVariable::SWAPCHAIN_HEIGHT;
+    }
 
 
-swapchainImages.resize(imageCount, {XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR});
-
-result = xrEnumerateSwapchainImages(
-    xrSwapchain,
-    imageCount,
-    &imageCount,
-    reinterpret_cast<XrSwapchainImageBaseHeader*>(swapchainImages.data())
-);
-if (XR_FAILED(result)) {
-    std::cerr << "Failed to enumerate swapchain images: " << result << std::endl;
-    return false;
-}
-
-std::cout << "Swapchain created successfully with " << imageCount << " images." << std::endl;
-return true;
+    std::cout << "InitAllSwapchains: created main + " << kSmallCount << " small swapchains\n";
+    return true;
 }

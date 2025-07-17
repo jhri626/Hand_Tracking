@@ -1,13 +1,13 @@
 // This file contains the definition of processFrameIteration() function that
 // handles frame waiting, beginning, hand joint location updates, and frame submission.
 #define XR_KHR_composition_layer_color
+#include <windows.h>
 #include<glad/glad.h>
 #include <openxr/openxr.h>
 #include <chrono>
 #include <vector>
 #include <iostream>
 #include <cstdlib>
-#include <windows.h>
 #include <GL/gl.h>
 #include "HMD.h"
 #include "HMD_number.h"
@@ -285,97 +285,134 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
 }
 
 
-
 void HMD::renderAndSubmitFrame(const XrFrameState& frameState) {
-    // 1) Acquire next swapchain image
-    uint32_t imageIndex;
+    // 1) Acquire next main swapchain image
+    uint32_t mainIndex = 0;
     XrSwapchainImageAcquireInfo acquireInfo{ XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO };
-    xrAcquireSwapchainImage(xrSwapchain, &acquireInfo, &imageIndex);
+    xrAcquireSwapchainImage(xrSwapchain, &acquireInfo, &mainIndex);
 
-    // 2) Wait until the image is available
+    // 2) Wait until the main image is available
     XrSwapchainImageWaitInfo waitInfo{ XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
     waitInfo.timeout = XR_INFINITE_DURATION;
     xrWaitSwapchainImage(xrSwapchain, &waitInfo);
 
-    // 3) Bind framebuffer and attach swapchain texture
+    XrSwapchainImageReleaseInfo releaseInfo{ XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
+
+    // 3) Render into main swapchain
     static GLuint colorFBO = 0;
     if (colorFBO == 0) {
         glGenFramebuffers(1, &colorFBO);
     }
-    GLuint tex = swapchainImages[imageIndex].image;
+    // bind FBO to main swapchain texture
+    GLuint mainTex = swapchainImages[mainIndex].image;
     glBindFramebuffer(GL_FRAMEBUFFER, colorFBO);
-    glFramebufferTexture2D(
-        GL_FRAMEBUFFER,
-        GL_COLOR_ATTACHMENT0,
-        GL_TEXTURE_2D,
-        tex,
-        0
-    );
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mainTex, 0);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "[error] Incomplete FBO\n";
+        std::cerr << "[error] Incomplete FBO (main)\n";
     }
-
-    // 4) Set viewport to HMD resolution
-    int width  = HMDVariable::GL_VIEW_WIDTH;
-    int height = HMDVariable::GL_VIEW_HEIGHT;
-    glViewport(0, 0, width, height);
-
-    // 5) Either update the texture from the latestImage_, or clear if empty
+    // set viewport and draw or clear
+    glViewport(0, 0, HMDVariable::GL_VIEW_WIDTH, HMDVariable::GL_VIEW_HEIGHT);
     {
         std::lock_guard<std::mutex> lock(imageMutex);
         if (!latestImage.empty()) {
-            glBindTexture(GL_TEXTURE_2D, tex);
-            glTexSubImage2D(
-                GL_TEXTURE_2D, 0,
-                0, 0,
-                latestImage.cols,
-                latestImage.rows,
-                GL_RGB,
-                GL_UNSIGNED_BYTE,
-                latestImage.data
-            );
+            glBindTexture(GL_TEXTURE_2D, mainTex);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                            latestImage.cols, latestImage.rows,
+                            GL_RGB, GL_UNSIGNED_BYTE,
+                            latestImage.data);
         } else {
             glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT);
         }
     }
-
-    // 6) Unbind framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    // 7) Release the swapchain image
-    XrSwapchainImageReleaseInfo releaseInfo{ XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
     xrReleaseSwapchainImage(xrSwapchain, &releaseInfo);
 
-    // 8) Prepare a composition layer to display our texture in the world
-    XrCompositionLayerQuad colorLayer{ XR_TYPE_COMPOSITION_LAYER_QUAD };
-    colorLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
-    colorLayer.space      = worldSpace;
-    colorLayer.pose       = {{0,0,0,1}, {0,0,-5}};   // 5m in front
-    colorLayer.size       = {4.0f, 4.0f};              // 4×4 meters
-    colorLayer.subImage.swapchain        = xrSwapchain;
-    colorLayer.subImage.imageArrayIndex  = 0;
-    colorLayer.subImage.imageRect.offset = {0,0};
-    colorLayer.subImage.imageRect.extent = {1024,768};
+    // 4) Render into each small swapchain
+    std::array<uint32_t, kSmallCount> smallIndices;
+    for (int i = 0; i < kSmallCount; ++i) {
+        // acquire and wait on small swapchain i
+        xrAcquireSwapchainImage(smallSwapchains[i], &acquireInfo, &smallIndices[i]);
+        xrWaitSwapchainImage(smallSwapchains[i], &waitInfo);
 
-    XrCompositionLayerBaseHeader* layers[] = {
-        reinterpret_cast<XrCompositionLayerBaseHeader*>(&colorLayer)
-    };
-
-    // 9) Submit frame to OpenXR
-    XrFrameEndInfo frameEndInfo{ XR_TYPE_FRAME_END_INFO };
-    frameEndInfo.displayTime          = frameState.predictedDisplayTime;
-    frameEndInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-    frameEndInfo.layerCount           = 1;
-    frameEndInfo.layers               = layers;
-
-    if (XR_FAILED(xrEndFrame(xrSession, &frameEndInfo))) {
-        std::cerr << "[error] xrEndFrame failed\n";
+        // bind FBO to small swapchain texture
+        GLuint smallTex = smallImages[i][smallIndices[i]].image;
+        glBindFramebuffer(GL_FRAMEBUFFER, colorFBO);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, smallTex, 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            std::cerr << "[error] Incomplete FBO (small[" << i << "])\n";
+        }
+        // clear with distinct color per quad
+        switch (i) {
+            case 0: glClearColor(current[0] + 0.1 ,0,0,1); break; // red
+            case 1: glClearColor(current[1] + 0.1 ,0,0,1); break; // green
+            case 2: glClearColor(current[2] + 0.1 ,0,0,1); break; // blue
+            case 3: glClearColor(current[3] + 0.1 ,0,0,1); break; // yellow
+        }
+        glClear(GL_COLOR_BUFFER_BIT);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        xrReleaseSwapchainImage(smallSwapchains[i], &releaseInfo);
     }
 
-    // 10) Throttle to ~60 Hz
+    // 5) Build and submit layers
+    // main quad
+    XrCompositionLayerQuad mainLayer{ XR_TYPE_COMPOSITION_LAYER_QUAD };
+    mainLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+    mainLayer.space      = hmdSpace;
+    mainLayer.pose       = { {0,0,0,1}, {0,0,-5} };
+    mainLayer.size       = { 4.0f, 4.0f };
+    mainLayer.subImage.swapchain        = xrSwapchain;
+    mainLayer.subImage.imageArrayIndex  = 0;
+    mainLayer.subImage.imageRect.offset = {0,0};
+    mainLayer.subImage.imageRect.extent = { mainWidth, mainHeight };
+
+    // small quads
+    const float smallSize = 1.0f, spacing = 0.2f;
+    float halfH = mainLayer.size.height/2, yOff = -(halfH + smallSize/2 + 0.1f);
+    float rowW = kSmallCount * smallSize + (kSmallCount-1)*spacing;
+    float startX = -rowW/2 + smallSize/2;
+
+    std::array<XrCompositionLayerQuad, kSmallCount> smallLayers;
+    for (int i = 0; i < kSmallCount; ++i) {
+        float x = startX + i*(smallSize + spacing);
+        smallLayers[i] = { XR_TYPE_COMPOSITION_LAYER_QUAD };
+        smallLayers[i].layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+        smallLayers[i].space      = hmdSpace;
+        smallLayers[i].pose       = { {0,0,0,1}, {x, yOff, -5} };
+        smallLayers[i].size       = { smallSize, smallSize };
+        smallLayers[i].subImage.swapchain        = smallSwapchains[i];
+        smallLayers[i].subImage.imageArrayIndex  = 0;
+        smallLayers[i].subImage.imageRect.offset = {0,0};
+        smallLayers[i].subImage.imageRect.extent = {smallWidth[i], smallHeight[i]};
+    }
+
+    // collect and submit
+    std::vector<XrCompositionLayerBaseHeader*> layers;
+    layers.reserve(1 + kSmallCount);
+    layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&mainLayer));
+    for (auto& sq : smallLayers) {
+        layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&sq));
+    }
+    XrFrameEndInfo endInfo{ XR_TYPE_FRAME_END_INFO };
+    endInfo.displayTime          = frameState.predictedDisplayTime;
+    endInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+    endInfo.layerCount           = (uint32_t)layers.size();
+    endInfo.layers               = layers.data();
+    
+    XrResult res = xrEndFrame(xrSession, &endInfo);
+    if (XR_FAILED(res)) {
+        char buf[XR_MAX_RESULT_STRING_SIZE];
+        xrResultToString(xrInstance, res, buf);
+        std::cerr << "[error] xrEndFrame failed: " 
+                << res << " (" << buf << ")\n";
+    }
+
+
+    // throttle ~60Hz
     std::this_thread::sleep_for(std::chrono::milliseconds(16));
 }
+
+
     
     
 void HMD::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
@@ -395,4 +432,7 @@ void HMD::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
     }
 }
 
+void HMD::currentCallback(const std_msgs::Float32MultiArray::ConstPtr& msg){
+    std::copy(msg->data.begin() + 4, msg->data.begin() + 8, current.begin());
+}
     

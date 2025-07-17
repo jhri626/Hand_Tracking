@@ -45,7 +45,12 @@ public:
     bool CreateOpenXRInstanceAndSession();
     bool CreateReferenceSpace(XrReferenceSpaceType type, XrSpace &outspace);
     bool beginOpenXRSession();
-    bool CreateSwapchain();
+    bool CreateSwapchain(uint32_t width,
+                         uint32_t height,
+                         XrSwapchain& outSwapchain,
+                         std::vector<XrSwapchainImageOpenGLKHR>& outImages);
+    bool InitAllSwapchains();
+
     void processFrameIteration();
     bool waitAndBeginFrame(XrFrameState& outState);
     void publishHMDPose(const ros::Time& stamp);
@@ -54,6 +59,7 @@ public:
     void computeJointAngles(const ros::Time& stamp);
     void renderAndSubmitFrame(const XrFrameState& frameState);
     void imageCallback(const sensor_msgs::ImageConstPtr& msg);
+    void currentCallback(const std_msgs::Float32MultiArray::ConstPtr& msg);
     //debug    
     
 
@@ -73,6 +79,9 @@ private:
     XrSessionState                    currentSessionState{};
     XrSwapchain                       xrSwapchain{ XR_NULL_HANDLE };
     std::vector<XrSwapchainImageOpenGLKHR> swapchainImages;
+    static constexpr int kSmallCount = 4;
+    std::array<XrSwapchain, kSmallCount>                    smallSwapchains;
+    std::array<std::vector<XrSwapchainImageOpenGLKHR>, kSmallCount> smallImages;
 
     // Hand tracking
     OpenXRProvider::XRExtHandTracking* pXRHandTracking{ nullptr };
@@ -92,6 +101,7 @@ private:
     ros::Publisher                     marker_pub; //debug tool
     
     ros::Subscriber                    imageSub;
+    ros::Subscriber                    currentSub;
     tf2_ros::TransformBroadcaster*     tf_broadcaster{ nullptr };
     geometry_msgs::PoseArray           pose_array;
     std_msgs::Float32MultiArray        angle_array;
@@ -111,5 +121,12 @@ private:
     // for ik
     Eigen::Vector3d temp;
     Eigen::Vector3d m_Index_ik;
+
+    int32_t mainWidth;
+    int32_t mainHeight;
+    std::array<int32_t, kSmallCount> smallWidth{};
+    std::array<int32_t, kSmallCount> smallHeight{};
+
+    std::array<float, 4> current{};
 
 };

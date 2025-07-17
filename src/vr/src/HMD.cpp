@@ -89,6 +89,8 @@ int HMD::init()
 
     imageSub = nh.subscribe("camera/image_raw", 1, &HMD::imageCallback, this);
 
+    currentSub = nh.subscribe("/current_state", 1, &HMD::currentCallback, this);
+
     tf_broadcaster = new tf2_ros::TransformBroadcaster();
 
     // pose_array.poses.resize(specific_indices.size()*2);
@@ -119,7 +121,7 @@ int HMD::init()
         return -1;
     }
 
-    if (!CreateSwapchain()) {
+    if (!InitAllSwapchains()) {
         std::cerr << "Failed to create Swapchain." << std::endl;
         return -1;
     }

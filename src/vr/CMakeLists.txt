@@ -75,18 +75,18 @@ set (LIBS_INCLUDE
     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/
     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glad/include
     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glfw/include
-    C:/Users/dyros/Desktop/dummy_ws/src/vr/include
+    ${CMAKE_SOURCE_DIR}/vr/include
   )
 
 include_directories(
   ${catkin_INCLUDE_DIRS}
-  C:/Users/dyros/Desktop/dummy_ws/src/vr/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/include
-  C:/Users/dyros/Desktop/dummy_ws/src/vr/third_party/OpenXRProvider/OpenXRProvider/third_party
-  C:/Users/dyros/Desktop/dummy_ws/src/vr/third_party/OpenXRProvider/Sandbox/include
-  C:/Users/dyros/Desktop/dummy_ws/src/vr/third_party/OpenXRProvider/OpenXRProvider/include
-  C:/Users/dyros/Desktop/dummy_ws/src/vr/third_party/OpenXRProvider/OpenXRProvider/include/extensions
+  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/include
+  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party
+  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/include
+  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/include
+  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/include/extensions
   ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glad/include
-  C:/Users/dyros/Desktop/dummy_ws/src/vr/third_party/eigen
+  ${CMAKE_SOURCE_DIR}/vr/third_party/eigen
   ${CMAKE_SOURCE_DIR}/vr/third_party/ceres-solver/include
   ${CMAKE_SOURCE_DIR}/vr/third_party/ceres-solver/include
   ${CERES_INCLUDE_DIRS}
@@ -111,7 +111,7 @@ set(SOURCES
     # src/kalman.cpp
 
     # src/Swapchain.cpp
-    C:/Users/dyros/Desktop/dummy_ws/src/vr/third_party/OpenXRProvider/Sandbox/third_party/glad/src/glad.c
+    ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glad/src/glad.c
     
 )
 
@@ -138,10 +138,10 @@ target_link_libraries(${PROJECT_NAME}_node
   ${CERES_LIBRARIES}
   ${GFLAGS_LIBRARIES}
   ${GLOG_LIBRARIES}
-  C:/Users/dyros/Desktop/dummy_ws/src/vr/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/x64/lib/openxr_loader.lib
+  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/x64/lib/openxr_loader.lib
   opengl32.lib
-  C:/Users/dyros/Desktop/dummy_ws/src/vr/third_party/OpenXRProvider/bin/OpenXRProvider.lib
-  C:/Users/dyros/Desktop/dummy_ws/src/vr/third_party/OpenXRProvider/Sandbox/third_party/glfw/lib/glfw3.lib
+  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/OpenXRProvider.lib
+  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glfw/lib/glfw3.lib
 )
 
 # target_link_libraries(rviz_node
