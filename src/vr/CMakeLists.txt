@@ -30,6 +30,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   sensor_msgs
   cv_bridge
+  eigen3
 )
 
 
@@ -86,7 +87,6 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/include
   ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/include/extensions
   ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glad/include
-  ${CMAKE_SOURCE_DIR}/vr/third_party/eigen
   ${CMAKE_SOURCE_DIR}/vr/third_party/ceres-solver/include
   ${CMAKE_SOURCE_DIR}/vr/third_party/ceres-solver/include
   ${CERES_INCLUDE_DIRS}

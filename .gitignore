@@ -1,4 +1,3 @@
-**/third_party/
 *.pyc
 **/.vscode/
 **/.vs/
