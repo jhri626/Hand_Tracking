@@ -71,35 +71,39 @@ namespace ik {
     template <typename T>
     bool operator()(const T* const theta, T* residual) const {
 
-      Eigen::Matrix<T,4,4> T1;
-      T1 << ceres::cos(theta[2]), T(0), ceres::sin(theta[2]), T(0),
-            T(0),                 T(1),                 T(0), -T(0),
-            -ceres::sin(theta[2]),T(0), ceres::cos(theta[2]), T(0),
-            T(0),                 T(0),                 T(0), T(1);
-      Eigen::Matrix<T,4,4> T2;
-      T2 << T(1), T(0),                T(0),                  T(0),
-            T(0), ceres::cos(theta[0]), ceres::sin(theta[0]), T(0),
-            T(0), -ceres::sin(theta[0]),ceres::cos(theta[0]), -T(0),
-            T(0), T(0),                 T(0),                 T(1);
+      // Eigen::Matrix<T,4,4> T1;
+      // T1 << ceres::cos(theta[2]), T(0), ceres::sin(theta[2]), T(0),
+      //       T(0),                 T(1),                 T(0), -T(0),
+      //       -ceres::sin(theta[2]),T(0), ceres::cos(theta[2]), T(0),
+      //       T(0),                 T(0),                 T(0), T(1);
+      // Eigen::Matrix<T,4,4> T2;
+      // T2 << T(1), T(0),                T(0),                  T(0),
+      //       T(0), ceres::cos(theta[0]), ceres::sin(theta[0]), T(0),
+      //       T(0), -ceres::sin(theta[0]),ceres::cos(theta[0]), -T(0),
+      //       T(0), T(0),                 T(0),                 T(1);
 
-      Eigen::Matrix<T,4,4> T3;
-      T3 << T(1), T(0),                T(0),                T(0),
-            T(0), ceres::cos(theta[1]), ceres::sin(theta[1]), T(0),
-            T(0), -ceres::sin(theta[1]), ceres::cos(theta[1]), -T(0),
-            T(0), T(0),                T(0),                T(1);
+      // Eigen::Matrix<T,4,4> T3;
+      // T3 << T(1), T(0),                T(0),                T(0),
+      //       T(0), ceres::cos(theta[1]), ceres::sin(theta[1]), T(0),
+      //       T(0), -ceres::sin(theta[1]), ceres::cos(theta[1]), -T(0),
+      //       T(0), T(0),                T(0),                T(1);
       
-      Eigen::Matrix<T,3,1> q = (Eigen::Matrix<T,3,1>() << T(0), T(0), T(-L1_)).finished();
-      Eigen::Matrix<T,3,3> I = Eigen::Matrix<T,3,3>::Identity();
-      T3.template block<3,1>(0,3) = (I - T3.template block<3,3>(0,0)) * q;
+      // Eigen::Matrix<T,3,1> q = (Eigen::Matrix<T,3,1>() << T(0), T(0), T(-L1_)).finished();
+      // Eigen::Matrix<T,3,3> I = Eigen::Matrix<T,3,3>::Identity();
+      // T3.template block<3,1>(0,3) = (I - T3.template block<3,3>(0,0)) * q;
             
-      Eigen::Matrix<T,4,1> p_local;
-      p_local << T(0), T(0), T(-(L2_ +L1_)), T(1);
+      // Eigen::Matrix<T,4,1> p_local;
+      // p_local << T(0), T(0), T(-(L2_ +L1_)), T(1);
 
-      Eigen::Matrix<T,4,1> p_world = T1 * (T2 * (T3* p_local));
+      // Eigen::Matrix<T,4,1> p_world = T1 * (T2 * (T3* p_local));
+
+      T x = ceres::sin(theta[2]) * (L2_*ceres::sin(theta[1]) * ceres::sin(theta[0]) -L2_ * ceres::cos(theta[0]) * ceres::cos(theta[1]) - L1_*ceres::cos(theta[0]));
+      T y = - L2_*ceres::sin(theta[1]) * ceres::cos(theta[0]) -L2_*ceres::sin(theta[0]) * ceres::cos(theta[1]) - L1_*ceres::sin(theta[0]);
+      T z = ceres::cos(theta[2]) * (L2_*ceres::sin(theta[1]) * ceres::sin(theta[0]) -L2_ * ceres::cos(theta[0]) * ceres::cos(theta[1]) - L1_*ceres::cos(theta[0]));
       
-      residual[0] = p_world(0) - T(target_position_.x());
-      residual[1] = p_world(1) - T(target_position_.y());
-      residual[2] = p_world(2) - T(target_position_.z());
+      residual[0] = x - T(target_position_.x());
+      residual[1] = y - T(target_position_.y());
+      residual[2] = z - T(target_position_.z());
       return true;
     }
   

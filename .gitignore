@@ -1,6 +1,7 @@
 **/third_party/
 *.pyc
 **/.vscode/
+**/.vs/
 *.rst
 __pycache__/
 *.py[cod]

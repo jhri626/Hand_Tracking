@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import rospy
-from std_msgs.msg import Float32MultiArray, Float64MultiArray, Int16MultiArray
+from std_msgs.msg import Float32MultiArray, Float64MultiArray, Int16
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Header
 import numpy as np
 import dynamixel_sdk as dxl 
+import threading
+
 
 
 ADDR_XL330_TORQUE_ENABLE       	= 64                          # Control table address is different in Dynamixel model
@@ -54,6 +56,9 @@ TORQUE_DISABLE              = 0                             # Value for disablin
 NUM_FINGER				= 4
 NUM_JOINT				= 8
 
+PRESENT_CURRENT = 126
+HARDWARE_ERROR_STATE = 70
+
 init_fe = [0,0,0,0]
 init_aa = [1700, 2000, 2000, 2055]
 
@@ -69,7 +74,7 @@ desired_pos_aa = [0,0,0,0]
 # Thumb: Lateral Pinch, T-1, T-1	Thumb: Init, pinch, full flexion		Index: Init, pinch, full flexion	    Middle: Init, pinch, full flexion
 
 ps_fe = np.array([[0,2550,3100],[0,2900,4300],[0,2841,4300],[0,3167,4300]]) # plate : 0 , pinch , full flexion
-ps_aa = np.array([[500,0,-500],[300,0,-300],[300,0,-300],[300,0,-300]]) #AA same order with calibration posture
+ps_aa = np.array([[600,0,-500],[300,0,-300],[300,0,-300],[300,0,-300]]) #AA same order with calibration posture
 
 # TODO : fix this parameters
 
@@ -78,12 +83,14 @@ class Finalnode:
         """
         Main function to initialize the node and retrieve calibration data from the ROS Parameter Server.
         """
+        self.lock = threading.Lock()
         rospy.init_node('calibration_user', anonymous=False)
         self.initialized = False
         self.pub = rospy.Publisher("/hand_joint_command", JointState, queue_size=1)
         self.motor_pub = rospy.Publisher('/motor_values', Float64MultiArray, queue_size=1)
         self.current_pub = rospy.Publisher('/current_state', Float32MultiArray, queue_size = 1)
         self.sub = rospy.Subscriber('/model_out', Float32MultiArray, self.callback)
+        self.recover = rospy.Subscriber('/recover', Int16, self.recovery)
         
 
         self.__init_dxl()
@@ -117,20 +124,28 @@ class Finalnode:
 
     def __init_dxl(self):
         # Port and packet handler
+        try: self.portHandler.clearPort()
+        except: pass
+        try: self.portHandler.closePort()
+        except: pass
+
         self.portHandler   = dxl.PortHandler(DEVICENAME)
         self.packetHandler = dxl.PacketHandler(PROTOCOL_VERSION)
         self.groupSyncWrite = dxl.GroupSyncWrite(self.portHandler, self.packetHandler, ADDR_XL330_GOAL_POSITION, LEN_GOAL_POSITION)
         self.groupSyncRead = dxl.GroupSyncRead(self.portHandler, self.packetHandler, ADDR_XL330_PRESENT_POSITION, LEN_PRESENT_POSITION)
+        self.groupSyncReadstatus = dxl.GroupSyncRead(self.portHandler, self.packetHandler, HARDWARE_ERROR_STATE, 1)
 
         for i in DXL_ID	 :
             self.groupSyncRead.addParam(i)
 
-        self.groupSyncRead_current = dxl.GroupSyncRead(self.portHandler, self.packetHandler, 126, 2)
+        self.groupSyncRead_current = dxl.GroupSyncRead(self.portHandler, self.packetHandler, PRESENT_CURRENT, 2)
         for i in DXL_ID_AA :
             self.groupSyncRead_current.addParam(i)
+            self.groupSyncReadstatus.addParam(i)
 
         for i in DXL_ID_FE :
             self.groupSyncRead_current.addParam(i)
+            self.groupSyncReadstatus.addParam(i)
 
 
         try: self.portHandler.clearPort()
@@ -271,7 +286,10 @@ class Finalnode:
             desired_pos_fe[i] = init_fe[i] + int((ps_fe[i,2]-ps_fe[i,0]) * q_pos[i+4] * 0.7692 ) # 1 / 1.3
             desired_pos_aa[i] = init_aa[i] + int((ps_aa[i,2]-ps_aa[i,0]) * (q_pos[i]))      
 
-            desired_pos_aa[0] = init_aa[0] + ps_aa[0,1] + int((ps_aa[0,2]-ps_aa[0,0]) * (q_pos[0]))
+        if q_pos[0] > 0:    
+            desired_pos_aa[0] = init_aa[0] + ps_aa[0,1] + 2 * int((ps_aa[0,2]-ps_aa[0,1]) * (q_pos[0]))
+        elif q_pos[0] < 0:
+            desired_pos_aa[0] = init_aa[0] + ps_aa[0,1] + 2 * int((ps_aa[0,1]-ps_aa[0,0]) * (q_pos[0]))
 
         for i in range(4):
             if desired_pos_fe[i] < init_fe[i] :
@@ -288,44 +306,45 @@ class Finalnode:
         """
         Send motor positions to all AA and FE Dynamixel joints.
         """
-        self.groupSyncWrite.clearParam()
-        data = motor_msg.data
-        
-        # Pack AA joint positions (first 4 entries)
-        for i in range(4):
-            pos = int(data[i])
-            param = [
-                dxl.DXL_LOBYTE(dxl.DXL_LOWORD(pos)),
-                dxl.DXL_HIBYTE(dxl.DXL_LOWORD(pos)),
-                dxl.DXL_LOBYTE(dxl.DXL_HIWORD(pos)),
-                dxl.DXL_HIBYTE(dxl.DXL_HIWORD(pos))
-            ]
-            self.groupSyncWrite.addParam(DXL_ID_AA[i], param)
-        
-        # Pack FE joint positions (next 4 entries)
-        for i in range(4, 8):
-            pos = int(data[i])
-            param = [
-                dxl.DXL_LOBYTE(dxl.DXL_LOWORD(pos)),
-                dxl.DXL_HIBYTE(dxl.DXL_LOWORD(pos)),
-                dxl.DXL_LOBYTE(dxl.DXL_HIWORD(pos)),
-                dxl.DXL_HIBYTE(dxl.DXL_HIWORD(pos))
-            ]
-            self.groupSyncWrite.addParam(DXL_ID_FE[i-4], param)
-        
-        # Transmit packet
-        result = self.groupSyncWrite.txPacket()
-        if result != dxl.COMM_SUCCESS:
-            rospy.logerr("Dynamixel SyncWrite failed: %s",
-                        self.packetHandler.getTxRxResult(result))
+        with self.lock:
+            self.groupSyncWrite.clearParam()
+            data = motor_msg.data
+            
+            # Pack AA joint positions (first 4 entries)
+            for i in range(4):
+                pos = int(data[i])
+                param = [
+                    dxl.DXL_LOBYTE(dxl.DXL_LOWORD(pos)),
+                    dxl.DXL_HIBYTE(dxl.DXL_LOWORD(pos)),
+                    dxl.DXL_LOBYTE(dxl.DXL_HIWORD(pos)),
+                    dxl.DXL_HIBYTE(dxl.DXL_HIWORD(pos))
+                ]
+                self.groupSyncWrite.addParam(DXL_ID_AA[i], param)
+            
+            # Pack FE joint positions (next 4 entries)
+            for i in range(4, 8):
+                pos = int(data[i])
+                param = [
+                    dxl.DXL_LOBYTE(dxl.DXL_LOWORD(pos)),
+                    dxl.DXL_HIBYTE(dxl.DXL_LOWORD(pos)),
+                    dxl.DXL_LOBYTE(dxl.DXL_HIWORD(pos)),
+                    dxl.DXL_HIBYTE(dxl.DXL_HIWORD(pos))
+                ]
+                self.groupSyncWrite.addParam(DXL_ID_FE[i-4], param)
+            
+            # Transmit packet
+            result = self.groupSyncWrite.txPacket()
+            if result != dxl.COMM_SUCCESS:
+                rospy.logerr("Dynamixel SyncWrite failed: %s",
+                            self.packetHandler.getTxRxResult(result))
             
     def read_current(self) :
         dxl_current_result = self.groupSyncRead_current.txRxPacket()
         for i in range(4) :
             # print(self.groupSyncRead_current.getData(DXL_ID_AA[i], 126, 1))
-            self.joint_currents[i] = self.groupSyncRead_current.getData(DXL_ID_AA[i], 126, 2)
+            self.joint_currents[i] = self.groupSyncRead_current.getData(DXL_ID_AA[i], PRESENT_CURRENT, 2)
         for i in range(4) :
-            self.joint_currents[i+4] = self.groupSyncRead_current.getData(DXL_ID_FE[i], 126, 2)
+            self.joint_currents[i+4] = self.groupSyncRead_current.getData(DXL_ID_FE[i], PRESENT_CURRENT, 2)
         msg= Float32MultiArray()
         #msg= Int64MultiArray()
         # print(self.joint_currents)
@@ -342,6 +361,35 @@ class Finalnode:
         rospy.loginfo("Shutting down: disabling torque on all motors.")
         for i in DXL_ID:
             self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE, TORQUE_DISABLE)
+            self.packetHandler.reboot(self.portHandler, i)
+    
+    def recovery(self, msg):
+        # 1) Enter recovery mode: unsubscribe all callbacks
+        rospy.loginfo("[Recovery] start: unsubscribing callbacks")
+        self.sub.unregister()
+        self.recover.unregister()  # Temporarily unsubscribe from /recover topic as well
+
+        # 2) Reboot motors exclusively under lock; no other motor access should occur here
+        rospy.loginfo("[Recovery] rebooting motors under exclusive lock")
+        with self.lock:
+            dxl_current_result = self.groupSyncReadstatus.txRxPacket()
+            for motor_id in DXL_ID:
+                status = self.groupSyncReadstatus.getData(motor_id, HARDWARE_ERROR_STATE, 1)
+                rospy.loginfo(f"Motor {motor_id} status: {status}")
+                if status != 0:
+                    self.packetHandler.reboot(self.portHandler, motor_id)
+                    rospy.loginfo(f"Rebooted motor id: {motor_id}")
+            self.disable_torque_all()
+        # 3) Other operations (e.g., hardware initialization, subscriptions) proceed without touching motors
+        rospy.loginfo("[Recovery] performing non-motor operations")
+        # Reinitialize hardware interfaces (does not write to motors)
+        self.__init_dxl()
+
+        # 4) Recreate subscriptions and log completion
+        self.sub     = rospy.Subscriber('/model_out', Float32MultiArray, self.callback)
+        self.recover = rospy.Subscriber('/recover',   Int16,            self.recovery)
+        rospy.loginfo("[Recovery] complete: callbacks resumed")
+
 
 
 

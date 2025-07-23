@@ -1,0 +1,25 @@
+<launch>
+  <!-- Node from package_a -->
+  <node pkg="vr"
+        type="vr_node"
+        name="vr_node"
+        output="screen" />
+
+  <!-- Node from package_b -->
+  <node pkg="final"
+        type="NN.py"
+        name="NN"
+        output="screen">
+    <!-- remap topics or pass params if needed -->
+    
+  </node>
+  
+  <node pkg="point_recorder"
+        type="point_recorder.py"
+        name="point_recorder"
+        output="screen">
+    <!-- remap topics or pass params if needed -->
+    
+  </node>
+
+</launch>

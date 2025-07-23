@@ -343,12 +343,16 @@ void HMD::renderAndSubmitFrame(const XrFrameState& frameState) {
             std::cerr << "[error] Incomplete FBO (small[" << i << "])\n";
         }
         // clear with distinct color per quad
-        switch (i) {
-            case 0: glClearColor(current[0] + 0.1 ,0,0,1); break; // red
-            case 1: glClearColor(current[1] + 0.1 ,0,0,1); break; // green
-            case 2: glClearColor(current[2] + 0.1 ,0,0,1); break; // blue
-            case 3: glClearColor(current[3] + 0.1 ,0,0,1); break; // yellow
+        if (current[i] >= 0 && current[i] < 0.3) {
+            glClearColor(0, 0, 1, 1);
+        } else if (current[i] >= 0.3 && current[i] < 0.6) {
+            glClearColor(0, 1, 0, 1);
+        } else if (current[i] >= 0.6 && current[i] < 0.9) {
+            glClearColor(1.0f, 0.5f, 0.0f, 1.0f);
+        } else if(current[i]>0.9) {
+            glClearColor(1.0f, 0.0f, 0.0f, 1.0f);  
         }
+
         glClear(GL_COLOR_BUFFER_BIT);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         xrReleaseSwapchainImage(smallSwapchains[i], &releaseInfo);
