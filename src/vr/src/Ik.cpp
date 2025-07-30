@@ -12,7 +12,7 @@
 
 namespace ik {
     Eigen::Vector2d inversekinematics(const ros::Publisher& pub, const Eigen::Quaterniond q_ref, const Eigen::Vector3d p_ref,
-                   const geometry_msgs::Pose& pose_target,double L1, double L2, double theta_init_x, double theta_init_y, const std::string& mode)
+                   const geometry_msgs::Pose& pose_target,double L1, double L2, double theta_init_x, double theta_init_y)
     {
         // 1) Convert poses to Eigen
         Eigen::Quaterniond q_tgt(
@@ -27,7 +27,7 @@ namespace ik {
             pose_target.position.z);
 
         // 2) Compute relative SE(3) and extract translation
-        Eigen::Matrix4d T_rel = lie_utils::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
+        Eigen::Matrix4d T_rel = mr::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
         Eigen::Vector3d target_pos = T_rel.block<3,1>(0,3);
 
         // std::cout<<"target pos"<<target_pos<<std::endl;
@@ -36,12 +36,11 @@ namespace ik {
           // initial guess
 
         ceres::Problem problem;
-        if (mode == "thumb"){
             // double theta[2] = {
             //     std::clamp(theta_init_x, 0.0, M_PI),
             //     std::clamp(theta_init_y, -M_PI/4, M_PI/4)
             // };
-            double theta[2];
+        double theta[2];
         theta[0] = std::max(0.0, std::min(theta_init_x, M_PI));
         theta[1] = std::max(0.0, std::min(theta_init_y, M_PI)); 
 
@@ -90,7 +89,7 @@ namespace ik {
 
 
         return Eigen::Vector2d(theta[0], theta[1]);
-        }
+        
     }
 
     /* Not used in now*/
@@ -111,7 +110,7 @@ namespace ik {
                 pose_target.position.z);
 
             // 2) Compute relative SE(3) and extract translation
-            Eigen::Matrix4d T_rel = lie_utils::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
+            Eigen::Matrix4d T_rel = mr::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
             Eigen::Vector3d target_pos = T_rel.block<3,1>(0,3);
             // std::cout<< "L1 :"<<L1<<", L2 : "<<L2<<std::endl;
             // std::cout<< "Target :"<<target_pos<<std::endl;
@@ -214,7 +213,7 @@ namespace ik {
             Eigen::Vector3d y(0,1,0);
             Eigen::Vector3d z(0,0,1);
             Eigen::Vector3d proxi = -L1 * z;
-            proxi = q_ref.toRotationMatrix() * lie_utils::Matexp3(lie_utils::vecToso3(y),theta[2]) * lie_utils::Matexp3(lie_utils::vecToso3(-x),theta[0]) * proxi;
+            proxi = q_ref.toRotationMatrix() * mr::MatrixExp3(mr::VecToso3(y*theta[2])) * mr::MatrixExp3(mr::VecToso3(-x*theta[0])) * proxi;
             // proxi = q_ref.toRotationMatrix() * lie_utils::Matexp3(lie_utils::vecToso3(y),theta[2]) * lie_utils::Matexp3(lie_utils::vecToso3(-x),0) * proxi;
             // Eigen::Vector3d proxi_2 = lie_utils::Matexp3(lie_utils::vecToso3(y),0) * lie_utils::Matexp3(lie_utils::vecToso3(-x),0) * proxi;
     
@@ -259,8 +258,8 @@ namespace ik {
                 pose_inter.position.z);
 
             // 2) Compute relative SE(3) and extract translation
-            Eigen::Matrix4d T_rel = lie_utils::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
-            Eigen::Matrix4d T_inter = lie_utils::computeRelativeSE3(q_ref, p_ref, q_inter, p_inter);
+            Eigen::Matrix4d T_rel = mr::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
+            Eigen::Matrix4d T_inter = mr::computeRelativeSE3(q_ref, p_ref, q_inter, p_inter);
             double alpha = 1.2;
             Eigen::Vector3d target_pos = alpha * T_rel.block<3,1>(0,3) * 1000 ;
             Eigen::Vector3d inter_pos = alpha * T_rel.block<3,1>(0,3) * 1000 ;

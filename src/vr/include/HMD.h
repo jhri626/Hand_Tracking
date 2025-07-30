@@ -25,6 +25,7 @@
 #include <ik.h>
 #include <vr/HandSyncData.h>
 #include <sensor_msgs/JointState.h>
+#include <algorithm>
 
 
 

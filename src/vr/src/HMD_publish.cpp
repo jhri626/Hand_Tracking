@@ -206,13 +206,13 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
 
     Eigen::Vector3d writstToThumb = p_wrist - p_thumb;
     Eigen::Vector3d writstToProxi = p_wrist - (p_thumb_proxi+p_thumb)/2;
-    Eigen::Vector3d indexToThumb = p_thumb - p_index;
+    // Eigen::Vector3d indexToThumb = p_thumb - p_index;
 
     Eigen::Vector3d projThumb = writstToThumb - writstToThumb.dot(y_axis) * y_axis;
     projThumb = writstToThumb.norm() * projThumb.normalized();
     // Eigen::Vector3d projIndex = index - index.dot(y_axis) * y_axis;
-    Eigen::Quaterniond newaxis =lie_utils::axis_align(q_wrist,writstToThumb);
-    Eigen::Quaterniond handaxis =lie_utils::axis_align(q_wrist,indexToThumb);
+    Eigen::Quaterniond newaxis =mr::axis_align(q_wrist,writstToThumb);
+    // Eigen::Quaterniond handaxis =mr::axis_align(q_wrist,indexToThumb);
     double L1 = (p_thumb_proxi-p_wrist).norm();
     double L2 = (p_thumb_distal-p_thumb_proxi).norm();
 
@@ -222,7 +222,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[1], pose_array.poses[3]);
 
     Eigen::Vector2d angle =ik::inversekinematics(marker_pub, newaxis, p_wrist , pose_array.poses[XR_HAND_JOINT_THUMB_TIP_EXT], 
-        L1, L2, 0 , 0, "thumb");
+        L1, L2, 0 , 0);
     
 
 
@@ -231,11 +231,11 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     p.position.y = p_thumb.y();
     p.position.z = p_thumb.z();
     
-    p.orientation.x = handaxis.x(); 
-    p.orientation.y = handaxis.y();
-    p.orientation.z = handaxis.z();
-    p.orientation.w = handaxis.w();
-    // pose_array.poses[1] = p;
+    p.orientation.x = q_wrist.x(); 
+    p.orientation.y = q_wrist.y();
+    p.orientation.z = q_wrist.z();
+    p.orientation.w = q_wrist.w();
+    pose_array.poses[1] = p;
 
 
     // thumb
@@ -413,7 +413,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
 
     std::array<Eigen::Vector3d, 4> root_array = 
     {
-        Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT ].position.z),
+        Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.z),
         Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.z),
         Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT ].position.z),
         Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_RING_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_RING_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_RING_PROXIMAL_EXT ].position.z)
@@ -421,7 +421,8 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
 
     std::array<Eigen::Quaterniond, 4> local_frame_array = 
     {
-        handaxis,
+        // q_wrist * Eigen::Quaterniond(0.27059805,0.27059805, 0.65328148, 0.65328148), // real
+        q_wrist * Eigen::Quaterniond(-0.43713013, 0.57223282, -0.1477154, 0.67797271), // sim
 
         Eigen::Quaterniond(
         pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT].orientation.w,
@@ -452,20 +453,35 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     header.stamp = ros::Time::now();
     qpos.header = header;
 
-    for (int i = 1; i < 4; i++)
+    for (int i = 0; i < 4; i++)
     {
-        Eigen::Vector2d q_pos_theta = ik::Anyteleopmethod(local_frame_array[i], root_array[i], inter_array[i], tip_array[i], qpos_FE[i], qpos_AA[i]);
-        // std::cout<<"After fe_q"<<std::endl;
-        qpos_FE[i] = gamma * qpos_FE[i] + (1-gamma) * q_pos_theta[0];
-        qpos_AA[i] = gamma * qpos_AA[i] + (1-gamma) * q_pos_theta[1];
 
-        qpos.position[i] = qpos_AA[i];
-        qpos.position[i+4] = qpos_FE[i];
-        // std::cout<<"q_pos?"<<std::endl;
+        double& current_FE = qpos_FE[i];
+        double& current_AA = qpos_AA[i];
+
+        Eigen::Vector2d& theta_est = ik::Anyteleopmethod(
+        local_frame_array[i], root_array[i], inter_array[i], tip_array[i],
+        current_FE, current_AA
+        );
+
+        // Efficient exponential smoothing (less multiplication)
+        double FE_delta = (1.0 - gamma) * (theta_est[0] - current_FE);
+        double AA_delta = (1.0 - gamma) * (theta_est[1] - current_AA);
+
+        // Clamp deltas
+        FE_delta = std::clamp(FE_delta, -0.1, 0.1);
+        AA_delta = std::clamp(AA_delta, -0.05, 0.05);
+
+        // Update joint positions
+        current_FE += FE_delta;
+        current_AA += AA_delta;
+
+        // Write back to qpos structure
+        qpos.position[i]     = current_AA;
+        qpos.position[i + 4] = current_FE;
 
     };
-    qpos.position[0]=0;
-    qpos.position[4]=0;
+    
     qpos_pub.publish(qpos);
     // TODO: add node for Anytelop method
     // we should apply ema and clipping to this method too

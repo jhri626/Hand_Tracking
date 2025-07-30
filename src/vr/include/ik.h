@@ -9,7 +9,7 @@
 #include <ceres/ceres.h>
 #include <pose_utils.h>
 #include <hand_number.h>
-#include <algorithm>
+
 
 #include <type_traits> // for debug
 
@@ -22,7 +22,7 @@ namespace ik {
       const Eigen::Quaterniond q_ref, 
       const Eigen::Vector3d p_ref,
       const geometry_msgs::Pose& pose_target,
-      double L1, double L2, double theta_init_x, double theta_init_y, const std::string& mode);
+      double L1, double L2, double theta_init_x, double theta_init_y);
   Eigen::Vector3d inversekinematicsIndex(
     const ros::Publisher& pub,
     const Eigen::Quaterniond q_ref, 
