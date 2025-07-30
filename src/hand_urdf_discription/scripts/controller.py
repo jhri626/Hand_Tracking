@@ -5,6 +5,7 @@
 import rospy
 from std_msgs.msg import Header
 from hand_urdf_description.msg import JointSet
+from sensor_msgs.msg import JointState
 import random
 from std_msgs.msg import Float32
 import numpy as np
@@ -15,7 +16,8 @@ class HandController:
         self.control_flag_ = False
         self.control_time_ = 0.0
         self.simtime_sub = rospy.Subscriber('/mujoco_ros_interface/sim_time', Float32, self.simtimecallback)
-        self.pub = rospy.Publisher('/mujoco_ros_interface/joint_set', JointSet, queue_size=10)
+        self.pub = rospy.Publisher('/joint_states', JointState, queue_size=1)
+        self.i = 0
         # self.random_values = [random.uniform(-0.2, 0.2) for _ in range(16)]
 
     def simtimecallback(self, data):
@@ -26,21 +28,25 @@ class HandController:
 
     def joint_set_publisher(self):
         if(self.control_flag_):
-            joint_set_msg = JointSet()
+            print("pub")
+            joint_20 = JointState()
+            joint_20.name =['aa2','mcp2','pip2','dip2','aa1','mcp1','pip1','dip1','aa3','mcp3','pip3','dip3','aa4','mcp4','pip4','dip4','act1','act2','act3','act4']
+            joint_20.position = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+            # joint_set_msg = JointSet()
             # 20 dof : ['aa2','mcp2','pip2','dip2',\
             #           'aa1','mcp1','pip1','dip1',\
             #           'aa3','mcp3','pip3','dip3',\
             #           'aa4','mcp4','pip4','dip4',\
             #           'act1','act2','act3','act4']
-            joint_set_msg.position = [0.0, 0.0, 0.0, 0.0,\
-                                      0.0, 0.0, 0.0, 0.0,\
-                                      0.0, 0.0, 0.0, 0.0,\
-                                      0.0, 0.0, 0.0, 0.0,\
-                                      0.0, 0.0, 0.0, 0.0]
-            joint_set_msg.header = Header()
-            joint_set_msg.header.stamp = rospy.Time.now()
-            joint_set_msg.time = self.control_time_
-            joint_set_msg.MODE = 0
+            # joint_set_msg.position = [0.0, 0.0, 0.0, 0.0,\
+            #                           0.0, 0.0, 0.0, 0.0,\
+            #                           0.0, 0.0, 0.0, 0.0,\
+            #                           0.0, 0.0, 0.0, 0.0,\
+            #                           0.0, 0.0, 0.0, 0.0]
+            # joint_set_msg.header = Header()
+            # joint_set_msg.header.stamp = rospy.Time.now()
+            # joint_set_msg.time = self.control_time_
+            # joint_set_msg.MODE = 0
 
             # Random Values
             # for i in range(20):
@@ -50,8 +56,12 @@ class HandController:
             # joint_set_msg.torque = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             
             # Test code
-            sin_d = 0.035 + 0.008*np.sin(self.control_time_ * np.pi - np.pi/2)
-            aa_value = 0.174533 + 0.174533*np.sin(self.control_time_ * np.pi - np.pi/2)
+            sin_d = 0.035 + 0.008*np.sin(self.i * np.pi  - np.pi/2)
+            # aa_value = 0.174533 + 0.174533*np.sin(self.control_time_ * np.pi - np.pi/2)
+            # sin_d = 0.65+0.65*np.sin(3.14/200*self.i)
+            # sin_d = 0.035
+            aa_value = 0.25*np.sin(3.14/10 * self.i)
+            # print(aa_value, self.i)
 
             # Actuator data order = [aa2, fe2,\
             #                        aa1, fe1,\
@@ -65,15 +75,23 @@ class HandController:
             Actuator_values = [aa_value*2, sin_d, aa_value*2, sin_d, 0.0, sin_d, -aa_value*2, sin_d]
             joint_pos_list = self.kinematicsCalculation_RHand(Actuator_values)
 
-            joint_set_msg.position[0:4] = joint_pos_list[0]
-            joint_set_msg.position[4:8] = joint_pos_list[1]
-            joint_set_msg.position[8:12] = joint_pos_list[2]
-            joint_set_msg.position[12:16] = joint_pos_list[3]
-            joint_set_msg.position[16:20] = joint_pos_list[4]
+            # joint_set_msg.position[0:4] = joint_pos_list[0]
+            # joint_set_msg.position[4:8] = joint_pos_list[1]
+            # joint_set_msg.position[8:12] = joint_pos_list[2]
+            # joint_set_msg.position[12:16] = joint_pos_list[3]
+            # joint_set_msg.position[16:20] = joint_pos_list[4]
 
-            self.pub.publish(joint_set_msg)
+            joint_20.position[0:4] = joint_pos_list[0]
+            joint_20.position[4:8] = joint_pos_list[1]
+            joint_20.position[8:12] = joint_pos_list[2]
+            joint_20.position[12:16] = joint_pos_list[3]
+            joint_20.position[16:20] = joint_pos_list[4]
+            print(joint_20.position)
+
+            self.pub.publish(joint_20)
 
         self.control_flag_ = False
+        self.i+=1
 
     def oneFingerFlexionCalculation(self, distance):
         # Reference : Sung, Eunho, et al. "SNU-Avatar Robot Hand: Dexterous Robot
@@ -158,7 +176,7 @@ class HandController:
 if __name__ == '__main__':
     try:
         rospy.init_node('joint_set_publisher_node')
-        hz = 1000
+        hz = 200
         controller = HandController(hz)
         rate = rospy.Rate(hz)
 

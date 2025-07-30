@@ -24,7 +24,7 @@ work with https://github.com/Hokyun-Lee/mujoco_ros_sim/tree/master
 
 ## To visulize 4-finger hand with joint coupler node
 ```
-roslaunch hand_urdf_discription hand_display.launch
+roslaunch hand_urdf_description hand_display.launch
 ```
 
 ### Finger index

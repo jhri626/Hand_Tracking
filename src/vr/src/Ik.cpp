@@ -93,7 +93,7 @@ namespace ik {
         }
     }
 
-    /* Not used in now
+    /* Not used in now*/
 
     Eigen::Vector3d inversekinematicsIndex(const ros::Publisher& pub, const Eigen::Quaterniond q_ref, const Eigen::Vector3d p_ref,
         const geometry_msgs::Pose& pose_target,double L1, double L2, double theta_init_1,double theta_init_2, double theta_init_3, const std::string& mode)
@@ -118,28 +118,40 @@ namespace ik {
 
             ceres::Problem problem;
             double theta[3] = {theta_init_1,theta_init_2,theta_init_3};
-            theta[0] = std::max(0.0, std::min(theta_init_1, M_PI));
-            theta[1] = std::max(0.0, std::min(theta_init_2, M_PI));
-            theta[2] = std::max(0.0, std::min(theta_init_3, M_PI));
+            theta[0] = theta_init_1;
+            theta[1] = theta_init_2;
+            theta[2] = theta_init_3;
                 auto* cost_function =
-            new ceres::AutoDiffCostFunction<indexIKCostFunctor, 2, 3>(
-                new indexIKCostFunctor(target_pos, L1, L2));
-            problem.AddResidualBlock(cost_function, new ceres::HuberLoss(0.01), theta);
+            new ceres::AutoDiffCostFunction<indexIKCostFunctor, 4, 3>(
+                new indexIKCostFunctor(target_pos, L1, L2, 0.02, 1e-6));
+            problem.AddResidualBlock(cost_function, nullptr, theta);
             
 
-            // problem.SetParameterLowerBound(theta, 0, theta_init_1 > 0 ? (theta_init_1 > M_PI/9 ? theta_init_1 - M_PI/9 : 0) : 0);
-            // problem.SetParameterUpperBound(theta, 0, theta_init_1 < 2 * M_PI/3 ? (theta_init_1 < 2 * M_PI/3 - M_PI/9 ? theta_init_1 + M_PI/9 : 2 * M_PI/3) : 2 * M_PI/3);
-            // problem.SetParameterLowerBound(theta, 1, theta_init_2 > 0 ? (theta_init_2 > M_PI/9 ? theta_init_2 - M_PI/9 : 0) : 0);
-            // problem.SetParameterUpperBound(theta, 1, theta_init_2 < 2 * M_PI/3 ? (theta_init_2 < 2 * M_PI/3 - M_PI/9 ? theta_init_2 + M_PI/9 : 2 * M_PI/3) : 2 * M_PI/3);
-            // problem.SetParameterLowerBound(theta, 2, theta_init_3 > -M_PI/4 + M_PI/9 ? theta_init_3 - M_PI/4 : -M_PI/4);
-            // problem.SetParameterUpperBound(theta, 2,  theta_init_3 < M_PI/4 - M_PI/9 ? theta_init_3 + M_PI/4 : M_PI/4);
-        
-            problem.SetParameterLowerBound(theta, 0, 0);
-            problem.SetParameterUpperBound(theta, 0,  M_PI/2);
-            problem.SetParameterLowerBound(theta, 1, 0);
-            problem.SetParameterUpperBound(theta, 1,  2 * M_PI/3);
-            problem.SetParameterLowerBound(theta, 2, -M_PI/4);
-            problem.SetParameterUpperBound(theta, 2,  M_PI/4);
+            problem.SetParameterLowerBound(theta, 0, theta_init_1 > 0 ? (theta_init_1 > M_PI/45 ? theta_init_1 - M_PI/45 : 0) : 0);
+            problem.SetParameterUpperBound(theta, 0, theta_init_1 < 2 * M_PI/3 ? (theta_init_1 < 2 * M_PI/3 - M_PI/45 ? theta_init_1 + M_PI/45 : 2 * M_PI/3) : 2 * M_PI/3);
+            problem.SetParameterLowerBound(theta, 1, theta_init_2 > 0 ? (theta_init_2 > M_PI/45 ? theta_init_2 - M_PI/45 : 0) : 0);
+            problem.SetParameterUpperBound(theta, 1, theta_init_2 < 2 * M_PI/3 ? (theta_init_2 < 2 * M_PI/3 - M_PI/9 ? theta_init_2 + M_PI/45 : 2 * M_PI/3) : 2 * M_PI/3);
+            problem.SetParameterLowerBound(theta, 2, theta_init_3 > -M_PI/4 + M_PI/45 ? theta_init_3 - M_PI/45 : -M_PI/4);
+            problem.SetParameterUpperBound(theta, 2,  theta_init_3 < M_PI/4 - M_PI/45 ? theta_init_3 + M_PI/45 : M_PI/4);
+            if (theta_init_1 < 0 || theta_init_1 > 2 * M_PI/3)
+            {
+                problem.SetParameterLowerBound(theta, 0, 0);
+                problem.SetParameterUpperBound(theta, 0,  M_PI/2);
+            }
+            if (theta_init_2 < 0 || theta_init_2 > 2 * M_PI/3)
+            {
+                problem.SetParameterLowerBound(theta, 1, 0);
+                problem.SetParameterUpperBound(theta, 1,  M_PI/2);
+            }
+            if (theta_init_3 < -M_PI/45 || theta_init_3 > M_PI/45)
+            {
+                problem.SetParameterLowerBound(theta, 2, -M_PI/4);
+                problem.SetParameterUpperBound(theta, 2,  M_PI/4);
+            }
+            // problem.SetParameterLowerBound(theta, 1, 0);
+            // problem.SetParameterUpperBound(theta, 1,  2 * M_PI/3);
+            // problem.SetParameterLowerBound(theta, 2, -M_PI/4);
+            // problem.SetParameterUpperBound(theta, 2,  M_PI/4);
         
             ceres::Solver::Options options;
             options.linear_solver_type = ceres::DENSE_QR;
@@ -190,6 +202,11 @@ namespace ik {
     
             // --- Compute world position by chaining transforms ---
             Eigen::Vector4d p_world = T1 * (T2 * (T3 * p_local));
+            // std::cout<<"ik pos"<< p_world.block<3,1>(0,0) <<std::endl;
+            // double residual_x = target_pos[0]-p_world[0];
+            // double residual_y = target_pos[1]-p_world[1];
+            // double residual_z = target_pos[2]-p_world[2];
+            // std::cout<<"residial x:"<<residual_x*residual_x<<"residial y:"<<residual_y*residual_y<<"residial z:"<<residual_z*residual_z<<std::endl;
     
             
             Eigen::Vector3d new_proxi = q_ref.toRotationMatrix() * p_world.block<3,1>(0,0);
@@ -198,15 +215,104 @@ namespace ik {
             Eigen::Vector3d z(0,0,1);
             Eigen::Vector3d proxi = -L1 * z;
             proxi = q_ref.toRotationMatrix() * lie_utils::Matexp3(lie_utils::vecToso3(y),theta[2]) * lie_utils::Matexp3(lie_utils::vecToso3(-x),theta[0]) * proxi;
+            // proxi = q_ref.toRotationMatrix() * lie_utils::Matexp3(lie_utils::vecToso3(y),theta[2]) * lie_utils::Matexp3(lie_utils::vecToso3(-x),0) * proxi;
+            // Eigen::Vector3d proxi_2 = lie_utils::Matexp3(lie_utils::vecToso3(y),0) * lie_utils::Matexp3(lie_utils::vecToso3(-x),0) * proxi;
     
-            
-            pub.publish(vectorToArrowMarker(p_ref,proxi,"world","v1",3,1,0,0));
-            pub.publish(vectorToArrowMarker(p_ref+proxi,new_proxi-proxi,"world","v1",4,0,1,0));
+            // std::cout<<L2<<" "<<(new_proxi-proxi).norm()<<std::endl;
+            pub.publish(vectorToArrowMarker(p_ref,proxi,"hmd_frame","v1",3,1,0,0));
+            // std::cout<<"p_ref"<<p_ref<<std::endl;
+            pub.publish(vectorToArrowMarker(p_ref+proxi,new_proxi-proxi,"hmd_frame","v1",4,0,1,0));
+            // pub.publish(vectorToArrowMarker(p_ref,proxi_2,"hmd_frame","v1",5,0,0,1));
             return Eigen::Vector3d(theta[0] , theta[1], theta[2]);
         }
-        // std::cout<<"work?"<<std::endl;
+        // std::cout<<"work?"<<std::endl;e
 
         // 4) Return optimized angles
 
-        */
+
+
+
+        Eigen::Vector2d Anyteleopmethod(const Eigen::Quaterniond q_ref, const Eigen::Vector3d p_ref, const geometry_msgs::Pose& pose_inter,
+                const geometry_msgs::Pose& pose_target, double d_pre, double AA)
+        {
+                // 1) Convert poses to Eigen
+            Eigen::Quaterniond q_tgt(
+                pose_target.orientation.w,
+                pose_target.orientation.x,
+                pose_target.orientation.y,
+                pose_target.orientation.z);
+
+            Eigen::Vector3d p_tgt(
+                pose_target.position.x,
+                pose_target.position.y,
+                pose_target.position.z);
+            
+            Eigen::Quaterniond q_inter(
+                pose_inter.orientation.w,
+                pose_inter.orientation.x,
+                pose_inter.orientation.y,
+                pose_inter.orientation.z);
+
+            Eigen::Vector3d p_inter(
+                pose_inter.position.x,
+                pose_inter.position.y,
+                pose_inter.position.z);
+
+            // 2) Compute relative SE(3) and extract translation
+            Eigen::Matrix4d T_rel = lie_utils::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
+            Eigen::Matrix4d T_inter = lie_utils::computeRelativeSE3(q_ref, p_ref, q_inter, p_inter);
+            double alpha = 1.2;
+            Eigen::Vector3d target_pos = alpha * T_rel.block<3,1>(0,3) * 1000 ;
+            Eigen::Vector3d inter_pos = alpha * T_rel.block<3,1>(0,3) * 1000 ;
+            // std::cout<< "L1 :"<<L1<<", L2 : "<<L2<<std::endl;
+            // std::cout<< "Target :"<<target_pos<<std::endl;
+            
+            double theta[2] = {d_pre,AA};
+            // double theta[2] = {22.4,0.0};
+            ceres::Problem problem;
+            ceres::CostFunction* cost_function =
+                new ceres::AutoDiffCostFunction<EEPositionFromDA_Functor, 6, 2>(
+                    new EEPositionFromDA_Functor(inter_pos, target_pos));
+                
+            problem.AddResidualBlock(cost_function, nullptr, theta);
+
+            double regularization_weight = 0.01;
+            ceres::CostFunction* regularization =
+                new ceres::AutoDiffCostFunction<ThetaRegularizationFunctor, 2, 2>(
+                    new ThetaRegularizationFunctor(d_pre, AA, regularization_weight));
+            problem.AddResidualBlock(regularization, nullptr, theta);
+
+            problem.SetParameterLowerBound(theta, 0, 0);
+            problem.SetParameterUpperBound(theta, 0, 1.3);   
+            problem.SetParameterLowerBound(theta, 1, -0.5);
+            problem.SetParameterUpperBound(theta, 1, 0.5);
+            
+            ceres::Solver::Options options;
+            options.linear_solver_type = ceres::DENSE_QR;
+            // options.minimizer_progress_to_stdout = true;
+            options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
+            // options.max_num_iterations   = 20000;
+    
+            ceres::Solver::Summary summary;
+            ceres::Solve(options, &problem, &summary);
+            return Eigen::Vector2d(theta[0] , theta[1]);
+        }
+
+    float computeMCPFlexionFromD(float d)
+    {
+        float s1, s2;
+        s1 = sqrt(d*d + HAND_h*HAND_h);
+        float alpha, beta, gamma, epsilon;
+        alpha = acos((HAND_l1*HAND_l1 + HAND_l2*HAND_l2 - s1*s1) / (2*HAND_l1*HAND_l2));
+        beta = alpha + HAND_alpha_prime;
+
+        s2 = sqrt(HAND_l3*HAND_l3 + HAND_l4*HAND_l4 - 2*HAND_l3*HAND_l4*cos(beta));
+        gamma = acos((HAND_l5*HAND_l5 + HAND_l6*HAND_l6 - s2*s2) / (2*HAND_l5*HAND_l6));
+
+        epsilon = acos((HAND_l3*HAND_l3 + s2*s2 - HAND_l4*HAND_l4) / (2*HAND_l3*s2)) - acos((HAND_l5*HAND_l5 + s2*s2 - HAND_l6*HAND_l6) / (2*HAND_l5*s2));
+        
+        return HAND_epsilon_0 - epsilon;
+    }
+
+        
 }

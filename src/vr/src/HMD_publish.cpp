@@ -198,15 +198,24 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
         pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT ].position.z
     );
 
+    Eigen::Vector3d p_index(
+        pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.x,
+        pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.y,
+        pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.z
+    );
+
     Eigen::Vector3d writstToThumb = p_wrist - p_thumb;
     Eigen::Vector3d writstToProxi = p_wrist - (p_thumb_proxi+p_thumb)/2;
+    Eigen::Vector3d indexToThumb = p_thumb - p_index;
 
     Eigen::Vector3d projThumb = writstToThumb - writstToThumb.dot(y_axis) * y_axis;
     projThumb = writstToThumb.norm() * projThumb.normalized();
     // Eigen::Vector3d projIndex = index - index.dot(y_axis) * y_axis;
     Eigen::Quaterniond newaxis =lie_utils::axis_align(q_wrist,writstToThumb);
+    Eigen::Quaterniond handaxis =lie_utils::axis_align(q_wrist,indexToThumb);
     double L1 = (p_thumb_proxi-p_wrist).norm();
     double L2 = (p_thumb_distal-p_thumb_proxi).norm();
+
 
     // std::cout<<"temp before"<<temp[0]<<","<<temp[1]<<std::endl;
 
@@ -218,15 +227,15 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
 
 
     geometry_msgs::Pose p;
-    p.position.x = p_wrist.x();
-    p.position.y = p_wrist.y();
-    p.position.z = p_wrist.z();
+    p.position.x = p_thumb.x();
+    p.position.y = p_thumb.y();
+    p.position.z = p_thumb.z();
     
-    p.orientation.x = newaxis.x(); 
-    p.orientation.y = newaxis.y();
-    p.orientation.z = newaxis.z();
-    p.orientation.w = newaxis.w();
-    pose_array.poses[1] = p;
+    p.orientation.x = handaxis.x(); 
+    p.orientation.y = handaxis.y();
+    p.orientation.z = handaxis.z();
+    p.orientation.w = handaxis.w();
+    // pose_array.poses[1] = p;
 
 
     // thumb
@@ -239,8 +248,8 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
 
     // Ensure our angle array is sized for all fingers (AA + FE for each)
 
-
-    for (int i =1; i < 4 ;i++)
+    
+    for (int i = 1; i < 4 ;i++)
     {
         geometry_msgs::Vector3 euler_angles = pose_utils::poseToEulerAngles(pose_array.poses[list[2*(i-1)]], pose_array.poses[list[2*(i-1)+1]]);
         Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[1+5*i],pose_array.poses[2+5*i],pose_array.poses[3+5*i]);
@@ -268,8 +277,213 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     latest_angles[2*fingernum] = euler.x;
     latest_angles[2*fingernum + 1] = euler.y;
     latest_angles[2*fingernum + 2] = euler.z;
-    
 
+    // /*
+    // Index data FE
+    // */
+    // Eigen::Vector3d z(0,0,1);
+    // //euler
+    // geometry_msgs::Vector3 euler_index = pose_utils::poseToEulerAngles(pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT], pose_array.poses[XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT]);
+    // double FE_index_euler = euler_index.x *180/M_PI;
+    
+    // // geo
+    
+    // Eigen::Vector3d VM(pose_array.poses[XR_HAND_JOINT_RING_METACARPAL_EXT].position.x, pose_array.poses[XR_HAND_JOINT_RING_METACARPAL_EXT].position.y, pose_array.poses[XR_HAND_JOINT_RING_METACARPAL_EXT].position.z);
+    // Eigen::Vector3d MCP2(pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.z);
+    // Eigen::Vector3d MCP3(pose_array.poses[XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT ].position.z);
+    // Eigen::Vector3d PIP2(pose_array.poses[XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT ].position.z);
+    // Eigen::Vector3d DIP2(pose_array.poses[XR_HAND_JOINT_INDEX_DISTAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_INDEX_DISTAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_INDEX_DISTAL_EXT ].position.z);
+
+    // Eigen::Vector3d v1 = MCP2 - VM; // HP index metacarpal phalanx
+    // Eigen::Vector3d v2 = MCP3 - VM; // HP middle metacarpal phalanx
+    // Eigen::Vector3d v3 = MCP3 - MCP2; // HP index MCP to middle MCP 
+    // Eigen::Vector3d v4 = PIP2 - MCP2; // P_proxi index proximal phalanx
+    // Eigen::Vector3d v5 = DIP2 - PIP2; // P_med index middle phalanx
+
+    // Eigen::Vector3d n1 = v2.cross(v1).normalized(); // normal vector for HP
+    // Eigen::Vector3d n2 = v3.cross(v4).normalized(); // normal vector for P_proxi
+    // Eigen::Vector3d n3 = v3.cross(v5).normalized(); // normal vector for P_med
+    
+    // double MCP = ((n1.cross(n2)).dot(mat.col(0)) <= 0) ? pose_utils::computeAngle(n1,n2) : -pose_utils::computeAngle(n1,n2);
+    // double PIP = ((n2.cross(n3)).dot(mat.col(0)) <= 0) ? pose_utils::computeAngle(n2,n3) : -pose_utils::computeAngle(n2,n3);
+    // double FE_index_geo = MCP + PIP;
+
+    // // ik
+    
+    // Eigen::Quaterniond MCP2_ori(
+    //     pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT].orientation.w,
+    //     pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT].orientation.x,
+    //     pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT].orientation.y,
+    //     pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT].orientation.z
+    // );
+    
+    // // std::cout<<"temp :"<<temp<<std::endl;
+    // Eigen::Vector3d MCP2_avg = (MCP2);
+    // // std::cout<<"MCP2"<<MCP2<<std::endl;
+    // m_Index_ik =ik::inversekinematicsIndex(marker_pub, MCP2_ori, MCP2_avg , pose_array.poses[XR_HAND_JOINT_INDEX_DISTAL_EXT], 
+    //     v4.norm(),  v5.norm(), m_Index_ik[0], m_Index_ik[1],m_Index_ik[2], "index");
+
+    // double FE_index_ik = (m_Index_ik[0] + m_Index_ik[1]) * 180 / M_PI;
+
+    // /*
+    // Index data AA
+    // */
+
+    // //euler
+    // double AA_index_euler = euler_index.y * 180/M_PI;
+
+    // // std::cout<<"euler index AA:"<<AA_index_euler<<std::endl;
+    // // std::cout<<"IK index AA:"<<m_Index_ik[2] * 180 / M_PI<<std::endl;
+
+    // // geo
+    // Eigen::Vector2d geo_index_my_method = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT],pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT],pose_array.poses[XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT]);    
+    // Eigen::Vector2d geo_index = pose_utils::jointAngle(marker_pub,n1,pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT],pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT],pose_array.poses[XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT]);    
+
+    // double AA_index_geo_my = geo_index_my_method.y();
+    // double AA_index_geo = geo_index.y();
+
+    // // ik
+    // double AA_index_ik = m_Index_ik[2] * 180 / M_PI ;
+
+    // /*
+    // Thumb data FE
+    // */
+
+    // //euler
+    // geometry_msgs::Vector3 euler_thumb = pose_utils::poseToEulerAngles(pose_array.poses[XR_HAND_JOINT_WRIST_EXT], pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT]);
+    // double FE_thumb_euler = euler_thumb.x * 180 / M_PI;
+
+    // //geo use CMC1 MCP1 MCP2
+    
+    // Eigen::Vector3d MCP1(pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_THUMB_PROXIMAL_EXT ].position.z);
+    // Eigen::Vector3d CMC1(pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.z);
+    // Eigen::Vector3d PIP1(pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT].position.x, pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT ].position.z);
+
+    // Eigen::Vector3d v6 = MCP1 - CMC1; // TM to thumb MCP
+    // Eigen::Vector3d v7 = MCP2 - CMC1; // TM to index MCP
+
+    // Eigen::Vector3d v8 = MCP2 - MCP1; // thumb MCP to index MCP
+    // Eigen::Vector3d v9 = PIP1 - MCP1; // thumb MCP to MCP
+
+    // Eigen::Vector3d n4 = v7.cross(v6).normalized();
+    // Eigen::Vector3d n5 = v8.cross(v9).normalized();
+
+    // double FE_thumb_geo = ((n4.cross(n5)).dot(mat.col(0)) <= 0) ? pose_utils::computeAngle(n4,n5) : - pose_utils::computeAngle(n4,n5);
+
+    // // marker_pub.publish(vectorToArrowMarker(MCP1,n4,"world","v1",1,1,0,0));
+    // // marker_pub.publish(vectorToArrowMarker(PIP1,n5,"world","v2",2,0,1,0));
+    // // marker_pub.publish(vectorToArrowMarker(MCP1,v8,"world","v3",3,0,0,1));
+    // // marker_pub.publish(vectorToArrowMarker(MCP1,v9,"world","v4",4,1,1,0));
+
+
+    // // ik
+
+    // double FE_thumb_ik = angle.x() * 180.0 / M_PI;
+
+    // /*
+    // Thumb data AA
+    // */
+
+    // //euler
+    // double AA_thumb_euler = euler_thumb.y * 180/M_PI;
+
+    // //ik
+    // double AA_thumb_ik = angle.y() * 180.0 / M_PI;
+
+
+    // //qpos Anytelop
+
+
+
+    std::array<geometry_msgs::Pose, 4> tip_array = 
+    {
+        pose_array.poses[XR_HAND_JOINT_THUMB_TIP_EXT ],
+        pose_array.poses[XR_HAND_JOINT_INDEX_TIP_EXT ],
+        pose_array.poses[XR_HAND_JOINT_MIDDLE_TIP_EXT ],
+        pose_array.poses[XR_HAND_JOINT_RING_TIP_EXT ]
+    };
+
+    std::array<geometry_msgs::Pose, 4> inter_array = 
+    {
+        pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT ],
+        pose_array.poses[XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT ],
+        pose_array.poses[XR_HAND_JOINT_MIDDLE_INTERMEDIATE_EXT ],
+        pose_array.poses[XR_HAND_JOINT_RING_INTERMEDIATE_EXT ]
+    };
+
+    std::array<Eigen::Vector3d, 4> root_array = 
+    {
+        Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT ].position.z),
+        Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.z),
+        Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT ].position.z),
+        Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_RING_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_RING_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_RING_PROXIMAL_EXT ].position.z)
+    };
+
+    std::array<Eigen::Quaterniond, 4> local_frame_array = 
+    {
+        handaxis,
+
+        Eigen::Quaterniond(
+        pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT].orientation.w,
+        pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT].orientation.x,
+        pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT].orientation.y,
+        pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT].orientation.z
+        ),
+
+        Eigen::Quaterniond(
+        pose_array.poses[XR_HAND_JOINT_MIDDLE_METACARPAL_EXT].orientation.w,
+        pose_array.poses[XR_HAND_JOINT_MIDDLE_METACARPAL_EXT].orientation.x,
+        pose_array.poses[XR_HAND_JOINT_MIDDLE_METACARPAL_EXT].orientation.y,
+        pose_array.poses[XR_HAND_JOINT_MIDDLE_METACARPAL_EXT].orientation.z
+        ),
+
+        Eigen::Quaterniond(
+        pose_array.poses[XR_HAND_JOINT_RING_METACARPAL_EXT].orientation.w,
+        pose_array.poses[XR_HAND_JOINT_RING_METACARPAL_EXT].orientation.x,
+        pose_array.poses[XR_HAND_JOINT_RING_METACARPAL_EXT].orientation.y,
+        pose_array.poses[XR_HAND_JOINT_RING_METACARPAL_EXT].orientation.z
+        )
+    
+    };
+
+
+    
+    std_msgs::Header header;
+    header.stamp = ros::Time::now();
+    qpos.header = header;
+
+    for (int i = 1; i < 4; i++)
+    {
+        Eigen::Vector2d q_pos_theta = ik::Anyteleopmethod(local_frame_array[i], root_array[i], inter_array[i], tip_array[i], qpos_FE[i], qpos_AA[i]);
+        // std::cout<<"After fe_q"<<std::endl;
+        qpos_FE[i] = gamma * qpos_FE[i] + (1-gamma) * q_pos_theta[0];
+        qpos_AA[i] = gamma * qpos_AA[i] + (1-gamma) * q_pos_theta[1];
+
+        qpos.position[i] = qpos_AA[i];
+        qpos.position[i+4] = qpos_FE[i];
+        // std::cout<<"q_pos?"<<std::endl;
+
+    };
+    qpos.position[0]=0;
+    qpos.position[4]=0;
+    qpos_pub.publish(qpos);
+    // TODO: add node for Anytelop method
+    // we should apply ema and clipping to this method too
+
+    
+    
+    std_msgs::Float32MultiArray data_index_array;
+    data_index_array.data.resize(7);
+
+    
+    
+    // data_index_array.data[0] = FE_index_euler;
+    // data_index_array.data[1] = FE_index_geo;
+    // data_index_array.data[2] = FE_index_ik;
+    // data_index_array.data[3] = AA_index_euler;
+    // data_index_array.data[4] = AA_index_geo;
+    // data_index_array.data[5] = AA_index_geo_my;
+    // data_index_array.data[6] = AA_index_ik;
 
 
     vr::HandSyncData sync_msg;
@@ -282,6 +496,8 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     sync_msg.trigger_flag = checkUserInput();
     
     hand_sync_pub.publish(sync_msg);
+    rviz_pub.publish(pose_array);
+    // data_pub.publish(data_index_array);
 }
 
 
@@ -350,7 +566,7 @@ void HMD::renderAndSubmitFrame(const XrFrameState& frameState) {
         } else if (current[i] >= 0.6 && current[i] < 0.9) {
             glClearColor(1.0f, 0.5f, 0.0f, 1.0f);
         } else if(current[i]>0.9) {
-            glClearColor(1.0f, 0.0f, 0.0f, 1.0f);  
+            glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
         }
 
         glClear(GL_COLOR_BUFFER_BIT);
@@ -414,6 +630,7 @@ void HMD::renderAndSubmitFrame(const XrFrameState& frameState) {
 
     // throttle ~60Hz
     std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 

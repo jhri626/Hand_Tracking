@@ -91,9 +91,11 @@ class Finalnode:
         self.current_pub = rospy.Publisher('/current_state', Float32MultiArray, queue_size = 1)
         self.sub = rospy.Subscriber('/model_out', Float32MultiArray, self.callback)
         self.recover = rospy.Subscriber('/recover', Int16, self.recovery)
-        
-
-        self.__init_dxl()
+        self.mode = "real"
+        try:
+            self.__init_dxl()
+        except:
+            self.mode = "sim"
 
         self.FE_prev = np.zeros(4)
         self.AA_prev = np.zeros(4)
@@ -229,8 +231,11 @@ class Finalnode:
 
         # Concatenate AA and FE into a single command array
         combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
-        motor_value = self.joint_to_motor(combined)
-        self.read_current()
+        if self.mode =='real':
+            motor_value = self.joint_to_motor(combined)
+            self.read_current()
+            self.send_to_motors(motor_value)
+            self.motor_pub.publish(motor_value)
 
         # Publish JointState message (unchanged as requested)
         joint_8 = JointState()
@@ -238,8 +243,8 @@ class Finalnode:
         joint_8.position = combined.tolist()
 
         self.pub.publish(joint_8)
-        self.motor_pub.publish(motor_value)
-        self.send_to_motors(motor_value)
+        
+        
 
         
     def compute_fe(self, raw):
@@ -375,10 +380,10 @@ class Finalnode:
             dxl_current_result = self.groupSyncReadstatus.txRxPacket()
             for motor_id in DXL_ID:
                 status = self.groupSyncReadstatus.getData(motor_id, HARDWARE_ERROR_STATE, 1)
-                rospy.loginfo(f"Motor {motor_id} status: {status}")
+                
                 if status != 0:
                     self.packetHandler.reboot(self.portHandler, motor_id)
-                    rospy.loginfo(f"Rebooted motor id: {motor_id}")
+                    
             self.disable_torque_all()
         # 3) Other operations (e.g., hardware initialization, subscriptions) proceed without touching motors
         rospy.loginfo("[Recovery] performing non-motor operations")

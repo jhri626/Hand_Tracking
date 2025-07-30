@@ -10,6 +10,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <spdlog/spdlog.h>
 #include <ros/ros.h>
+#include <std_msgs/Header.h>
 #include <OpenXRProvider.h>
 #include <geometry_msgs/PoseArray.h>
 #include <tf2_ros/transform_broadcaster.h>
@@ -23,6 +24,7 @@
 #include <geometry_msgs/Point.h>
 #include <ik.h>
 #include <vr/HandSyncData.h>
+#include <sensor_msgs/JointState.h>
 
 
 
@@ -99,6 +101,7 @@ private:
     int                                argc_;
     char**                             argv_;
     ros::Publisher                     marker_pub; //debug tool
+    ros::Time                          start_time;
     
     ros::Subscriber                    imageSub;
     ros::Subscriber                    currentSub;
@@ -106,15 +109,22 @@ private:
     geometry_msgs::PoseArray           pose_array;
     std_msgs::Float32MultiArray        angle_array;
     std_msgs::Float32MultiArray        data_array;
+    sensor_msgs::JointState            qpos;
     std::vector<int>                   specific_indices = kSpecificIndices;
 
     // for model data
     std::vector<float>                 latest_angles;
     ros::Publisher                     hand_sync_pub;
+    ros::Publisher                     rviz_pub;
+    ros::Publisher                     data_pub;
+    ros::Publisher                     qpos_pub;
 
     // joint
     std::array<double, 5> AA_joint;
     std::array<double, 5> FE_joint;
+
+    std::array<double, 4> qpos_FE;
+    std::array<double, 4> qpos_AA;
     double gamma;
     int fingernum;
 

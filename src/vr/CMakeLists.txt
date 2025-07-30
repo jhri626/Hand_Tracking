@@ -27,6 +27,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   image_transport
   message_generation
+  message_runtime
   geometry_msgs
   sensor_msgs
   cv_bridge
@@ -37,6 +38,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   HandSyncData.msg
+  JointState.msg
 )
 
 generate_messages(
@@ -88,7 +90,6 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/include/extensions
   ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glad/include
   ${CMAKE_SOURCE_DIR}/vr/third_party/ceres-solver/include
-  ${CMAKE_SOURCE_DIR}/vr/third_party/ceres-solver/include
   ${CERES_INCLUDE_DIRS}
   ${GFLAGS_INCLUDE_DIRS}
   ${GLOG_INCLUDE_DIRS}
@@ -130,6 +131,10 @@ set(HEADERS
 
 # 실행 파일 생성
 add_executable(${PROJECT_NAME}_node ${SOURCES} ${HEADERS})
+add_dependencies(${PROJECT_NAME}_node
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
 # add_executable(rviz_node src/rviz.cpp)
 
 target_link_libraries(${PROJECT_NAME}_node
@@ -152,13 +157,13 @@ target_compile_options(${PROJECT_NAME}_node PRIVATE /EHsc)
 target_include_directories(${PROJECT_NAME}_node PRIVATE ${LIBS_INCLUDE})
 
 
+
 # add_custom_command(TARGET ${PROJECT_NAME}_node POST_BUILD
 #   COMMAND ${CMAKE_COMMAND} -E copy_if_different
 #   "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/x64/bin/openxr_loader.dll"
 #   "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/openXRProvider.dll"
 #   $<TARGET_FILE_DIR:${PROJECT_NAME}_node>
 # )
-
 
 
 
