@@ -30,17 +30,13 @@ namespace ik {
         Eigen::Matrix4d T_rel = mr::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
         Eigen::Vector3d target_pos = T_rel.block<3,1>(0,3);
 
-        // std::cout<<"target pos"<<target_pos<<std::endl;
+        
 
         // 3) Set up Ceres problem
           // initial guess
 
         ceres::Problem problem;
-            // double theta[2] = {
-            //     std::clamp(theta_init_x, 0.0, M_PI),
-            //     std::clamp(theta_init_y, -M_PI/4, M_PI/4)
-            // };
-        double theta[2];
+                double theta[2];
         theta[0] = std::max(0.0, std::min(theta_init_x, M_PI));
         theta[1] = std::max(0.0, std::min(theta_init_y, M_PI)); 
 
@@ -55,11 +51,6 @@ namespace ik {
             new ceres::AutoDiffCostFunction<ThetaRegularizationFunctor, 2, 2>(
                 new ThetaRegularizationFunctor(theta_init_x, theta_init_y, regularization_weight));
         problem.AddResidualBlock(regularization, nullptr, theta);
-
-        // problem.SetParameterLowerBound(theta, 0, theta_init_x < M_PI ? (theta_init_x > M_PI/9 ? theta_init_x - M_PI/4 : 0) : 0);
-        // problem.SetParameterUpperBound(theta, 0, theta_init_x > 0 ? (theta_init_x < M_PI - M_PI/9 ? theta_init_x + M_PI/4 : M_PI) : M_PI);
-        // problem.SetParameterLowerBound(theta, 1, theta_init_y > -M_PI/4 + M_PI/9 ? theta_init_y - M_PI/4 : -M_PI/4);
-        // problem.SetParameterUpperBound(theta, 1,  theta_init_y < M_PI/4 - M_PI/9 ? theta_init_y + M_PI/4 : M_PI/4);
 
         problem.SetParameterLowerBound(theta, 0, 0);
         problem.SetParameterUpperBound(theta, 0,  M_PI);
@@ -329,22 +320,6 @@ namespace ik {
             
             return Eigen::Vector2d(theta[0] , theta[1]);
         }
-
-    // float computeMCPFlexionFromD(float d)
-    // {
-    //     float s1, s2;
-    //     s1 = sqrt(d*d + HAND_h*HAND_h);
-    //     float alpha, beta, gamma, epsilon;
-    //     alpha = acos((HAND_l1*HAND_l1 + HAND_l2*HAND_l2 - s1*s1) / (2*HAND_l1*HAND_l2));
-    //     beta = alpha + HAND_alpha_prime;
-
-    //     s2 = sqrt(HAND_l3*HAND_l3 + HAND_l4*HAND_l4 - 2*HAND_l3*HAND_l4*cos(beta));
-    //     gamma = acos((HAND_l5*HAND_l5 + HAND_l6*HAND_l6 - s2*s2) / (2*HAND_l5*HAND_l6));
-
-    //     epsilon = acos((HAND_l3*HAND_l3 + s2*s2 - HAND_l4*HAND_l4) / (2*HAND_l3*s2)) - acos((HAND_l5*HAND_l5 + s2*s2 - HAND_l6*HAND_l6) / (2*HAND_l5*s2));
-        
-    //     return HAND_epsilon_0 - epsilon;
-    // }
 
         
 }
