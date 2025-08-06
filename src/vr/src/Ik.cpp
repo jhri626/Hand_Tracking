@@ -12,7 +12,7 @@
 
 namespace ik {
     Eigen::Vector2d inversekinematics(const ros::Publisher& pub, const Eigen::Quaterniond q_ref, const Eigen::Vector3d p_ref,
-                   const geometry_msgs::Pose& pose_target,double L1, double L2, double theta_init_x, double theta_init_y)
+                   const geometry_msgs::Pose& pose_target, double L1, double L2, double theta_init_x, double theta_init_y)
     {
         // 1) Convert poses to Eigen
         Eigen::Quaterniond q_tgt(
@@ -49,6 +49,13 @@ namespace ik {
             new thumbIKCostFunctor(target_pos, L1, L2, 0.015, 1e-6));
         problem.AddResidualBlock(cost_function, nullptr, theta);
 
+
+        double regularization_weight = 0.01;
+        ceres::CostFunction* regularization =
+            new ceres::AutoDiffCostFunction<ThetaRegularizationFunctor, 2, 2>(
+                new ThetaRegularizationFunctor(theta_init_x, theta_init_y, regularization_weight));
+        problem.AddResidualBlock(regularization, nullptr, theta);
+
         // problem.SetParameterLowerBound(theta, 0, theta_init_x < M_PI ? (theta_init_x > M_PI/9 ? theta_init_x - M_PI/4 : 0) : 0);
         // problem.SetParameterUpperBound(theta, 0, theta_init_x > 0 ? (theta_init_x < M_PI - M_PI/9 ? theta_init_x + M_PI/4 : M_PI) : M_PI);
         // problem.SetParameterLowerBound(theta, 1, theta_init_y > -M_PI/4 + M_PI/9 ? theta_init_y - M_PI/4 : -M_PI/4);
@@ -64,12 +71,16 @@ namespace ik {
         options.linear_solver_type = ceres::DENSE_QR;
         // options.minimizer_progress_to_stdout = true;
         options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
-        options.max_num_iterations   = 100;
+        // options.max_num_iterations   = 100;
 
         ceres::Solver::Summary summary;
         ceres::Solve(options, &problem, &summary);
 
-        Eigen::Vector3d proxi = -L1 * (q_ref.toRotationMatrix().col(2)).normalized();
+        Eigen::Vector3d proxi(
+            0,
+            -std::sin(theta[1]) * L1,
+            -std::cos(theta[1]) * L1
+        );
 
         Eigen::Vector3d joint1(
             q_ref.toRotationMatrix().col(0)
@@ -80,13 +91,19 @@ namespace ik {
 
 
         Eigen::Vector3d newproxi(
-            ceres::cos(M_PI *4.5/18) * ( - (L2) * ceres::sin(theta[1]) ) - ceres::sin(M_PI *4.5/18) * ( - (L2) * ceres::cos(theta[1]) * ceres::sin(theta[0])),
-            ceres::sin(M_PI *4.5/18) * ( - (L2) * ceres::sin(theta[1]) ) + ceres::cos(M_PI *4.5/18) * ( - (L2) * ceres::cos(theta[1]) * ceres::sin(theta[0])),
-            - (L1) - (L2) * ceres::cos(theta[0]) * ceres::cos(theta[1])
+            L2 * std::sin(theta[0]),
+            - std::sin(theta[1]) * ( L1 + L2 * std::cos(theta[0])),
+            -std::cos(theta[1]) * ( L1 + L2 * std::cos(theta[0]))
         );
 
+        proxi = q_ref.toRotationMatrix() * proxi;
         newproxi = q_ref.toRotationMatrix() * newproxi;
 
+
+
+        pub.publish(vectorToArrowMarker(p_ref,proxi,"hmd_frame","v1",3,1,0,0));
+            // std::cout<<"p_ref"<<p_ref<<std::endl;
+        pub.publish(vectorToArrowMarker(p_ref+proxi,newproxi-proxi,"hmd_frame","v1",4,0,1,0));
 
         return Eigen::Vector2d(theta[0], theta[1]);
         
@@ -232,7 +249,7 @@ namespace ik {
 
 
         Eigen::Vector2d Anyteleopmethod(const Eigen::Quaterniond q_ref, const Eigen::Vector3d p_ref, const geometry_msgs::Pose& pose_inter,
-                const geometry_msgs::Pose& pose_target, double d_pre, double AA)
+                const geometry_msgs::Pose& pose_target, double d_pre, double AA, int idx)
         {
                 // 1) Convert poses to Eigen
             Eigen::Quaterniond q_tgt(
@@ -269,11 +286,25 @@ namespace ik {
             double theta[2] = {d_pre,AA};
             // double theta[2] = {22.4,0.0};
             ceres::Problem problem;
-            ceres::CostFunction* cost_function =
-                new ceres::AutoDiffCostFunction<EEPositionFromDA_Functor, 6, 2>(
-                    new EEPositionFromDA_Functor(inter_pos, target_pos));
+            if (idx != 0)
+            {
                 
-            problem.AddResidualBlock(cost_function, nullptr, theta);
+                ceres::CostFunction* cost_function =
+                    new ceres::AutoDiffCostFunction<EEPositionFromDA_Functor, 6, 2>(
+                        new EEPositionFromDA_Functor(inter_pos, target_pos));
+                    
+                problem.AddResidualBlock(cost_function, nullptr, theta);
+            }
+            else
+            {
+                
+                ceres::CostFunction* cost_function =
+                    new ceres::AutoDiffCostFunction<EEPositionFromDA_Functor_Thumb, 6, 2>(
+                        new EEPositionFromDA_Functor_Thumb(inter_pos, target_pos));
+                    
+                problem.AddResidualBlock(cost_function, nullptr, theta);
+            }
+            
 
             double regularization_weight = 0.01;
             ceres::CostFunction* regularization =
@@ -288,30 +319,32 @@ namespace ik {
             
             ceres::Solver::Options options;
             options.linear_solver_type = ceres::DENSE_QR;
-            // options.minimizer_progress_to_stdout = true;
+
+            // if (idx == 0 ) options.minimizer_progress_to_stdout = true;
             options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
             // options.max_num_iterations   = 20000;
     
             ceres::Solver::Summary summary;
             ceres::Solve(options, &problem, &summary);
+            
             return Eigen::Vector2d(theta[0] , theta[1]);
         }
 
-    float computeMCPFlexionFromD(float d)
-    {
-        float s1, s2;
-        s1 = sqrt(d*d + HAND_h*HAND_h);
-        float alpha, beta, gamma, epsilon;
-        alpha = acos((HAND_l1*HAND_l1 + HAND_l2*HAND_l2 - s1*s1) / (2*HAND_l1*HAND_l2));
-        beta = alpha + HAND_alpha_prime;
+    // float computeMCPFlexionFromD(float d)
+    // {
+    //     float s1, s2;
+    //     s1 = sqrt(d*d + HAND_h*HAND_h);
+    //     float alpha, beta, gamma, epsilon;
+    //     alpha = acos((HAND_l1*HAND_l1 + HAND_l2*HAND_l2 - s1*s1) / (2*HAND_l1*HAND_l2));
+    //     beta = alpha + HAND_alpha_prime;
 
-        s2 = sqrt(HAND_l3*HAND_l3 + HAND_l4*HAND_l4 - 2*HAND_l3*HAND_l4*cos(beta));
-        gamma = acos((HAND_l5*HAND_l5 + HAND_l6*HAND_l6 - s2*s2) / (2*HAND_l5*HAND_l6));
+    //     s2 = sqrt(HAND_l3*HAND_l3 + HAND_l4*HAND_l4 - 2*HAND_l3*HAND_l4*cos(beta));
+    //     gamma = acos((HAND_l5*HAND_l5 + HAND_l6*HAND_l6 - s2*s2) / (2*HAND_l5*HAND_l6));
 
-        epsilon = acos((HAND_l3*HAND_l3 + s2*s2 - HAND_l4*HAND_l4) / (2*HAND_l3*s2)) - acos((HAND_l5*HAND_l5 + s2*s2 - HAND_l6*HAND_l6) / (2*HAND_l5*s2));
+    //     epsilon = acos((HAND_l3*HAND_l3 + s2*s2 - HAND_l4*HAND_l4) / (2*HAND_l3*s2)) - acos((HAND_l5*HAND_l5 + s2*s2 - HAND_l6*HAND_l6) / (2*HAND_l5*s2));
         
-        return HAND_epsilon_0 - epsilon;
-    }
+    //     return HAND_epsilon_0 - epsilon;
+    // }
 
         
 }

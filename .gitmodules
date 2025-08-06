@@ -5,6 +5,3 @@
 [submodule "src/vr/third_party/OpenXRProvider"]
 	path = src/vr/third_party/OpenXRProvider
 	url = https://github.com/1runeberg/OpenXRProvider.git
-[submodule "src/vr/third_party/ceres-solver"]
-	path = src/vr/third_party/ceres-solver
-	url = https://github.com/ceres-solver/ceres-solver.git

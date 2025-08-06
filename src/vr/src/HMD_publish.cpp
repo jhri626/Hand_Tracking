@@ -205,11 +205,11 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     );
 
     Eigen::Vector3d writstToThumb = p_wrist - p_thumb;
-    Eigen::Vector3d writstToProxi = p_wrist - (p_thumb_proxi+p_thumb)/2;
+    // Eigen::Vector3d writstToProxi = p_wrist - (p_thumb_proxi+p_thumb)/2;
     // Eigen::Vector3d indexToThumb = p_thumb - p_index;
 
-    Eigen::Vector3d projThumb = writstToThumb - writstToThumb.dot(y_axis) * y_axis;
-    projThumb = writstToThumb.norm() * projThumb.normalized();
+    // Eigen::Vector3d projThumb = writstToThumb - writstToThumb.dot(y_axis) * y_axis;
+    // projThumb = writstToThumb.norm() * projThumb.normalized();
     // Eigen::Vector3d projIndex = index - index.dot(y_axis) * y_axis;
     Eigen::Quaterniond newaxis =mr::axis_align(q_wrist,writstToThumb);
     // Eigen::Quaterniond handaxis =mr::axis_align(q_wrist,indexToThumb);
@@ -223,26 +223,28 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
 
     Eigen::Vector2d angle =ik::inversekinematics(marker_pub, newaxis, p_wrist , pose_array.poses[XR_HAND_JOINT_THUMB_TIP_EXT], 
         L1, L2, 0 , 0);
+
+    // std::cout <<"FE : " <<angle.x() << ", AA : "<<angle.y()<<std::endl;
     
 
-
+    Eigen::Quaterniond temp =  q_wrist * Eigen::Quaterniond(0.67797271, 0.1477154 , 0.57223282, 0.43713013); // sim
     geometry_msgs::Pose p;
     p.position.x = p_thumb.x();
     p.position.y = p_thumb.y();
     p.position.z = p_thumb.z();
     
-    p.orientation.x = q_wrist.x(); 
-    p.orientation.y = q_wrist.y();
-    p.orientation.z = q_wrist.z();
-    p.orientation.w = q_wrist.w();
-    pose_array.poses[1] = p;
+    p.orientation.x = temp.x(); 
+    p.orientation.y = temp.y();
+    p.orientation.z = temp.z();
+    p.orientation.w = temp.w();
+    pose_array.poses[2] = p;
 
 
     // thumb
 
     
-    AA_joint[0] = gamma * AA_joint[0] + (1-gamma) * angle.y() * 180.0 / M_PI ;
-    FE_joint[0] = gamma * FE_joint[0] + (1-gamma) * - angle.x() * 180.0 / M_PI ;
+    AA_joint[0] = (1-gamma) * AA_joint[0] + gamma * angle.y() * 180.0 / M_PI ;
+    FE_joint[0] = (1-gamma) * FE_joint[0] + gamma * angle.x() * 180.0 / M_PI ;
     latest_angles[0] = AA_joint[0] ; // AA
     latest_angles[fingernum] = FE_joint[0]  ; // FE
 
@@ -255,12 +257,14 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
         Eigen::Vector2d angle = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[1+5*i],pose_array.poses[2+5*i],pose_array.poses[3+5*i]);
                 
                 if (std::isnan(euler_angles.x)) euler_angles.x = 0.0;
-                AA_joint[i] = gamma * AA_joint[i] + (1-gamma) * angle.y() ;
-                FE_joint[i] = gamma * FE_joint[i] + (1-gamma) * euler_angles.x * 180.0 / M_PI ;
+                AA_joint[i] = (1-gamma) * AA_joint[i] + gamma * angle.y() ;
+                FE_joint[i] = (1-gamma) * FE_joint[i] + gamma * euler_angles.x * 180.0 / M_PI ;
                 latest_angles[i] = AA_joint[i] ; // AA
                 latest_angles[i+fingernum] = FE_joint[i] ; // FE
+
+                std::cout<<"Idx : "<<i<<", AA : "<<AA_joint[i]<<std::endl;
         }
-    
+    std::cout<<"\n"<<std::endl;
 
     geometry_msgs::Pose I;
     I.position.x = 0;
@@ -413,7 +417,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
 
     std::array<Eigen::Vector3d, 4> root_array = 
     {
-        Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_THUMB_METACARPAL_EXT ].position.z),
+        Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_WRIST_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_WRIST_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_WRIST_EXT ].position.z),
         Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT ].position.z),
         Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT ].position.z),
         Eigen::Vector3d (pose_array.poses[XR_HAND_JOINT_RING_PROXIMAL_EXT ].position.x, pose_array.poses[XR_HAND_JOINT_RING_PROXIMAL_EXT ].position.y, pose_array.poses[XR_HAND_JOINT_RING_PROXIMAL_EXT ].position.z)
@@ -422,7 +426,8 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     std::array<Eigen::Quaterniond, 4> local_frame_array = 
     {
         // q_wrist * Eigen::Quaterniond(0.27059805,0.27059805, 0.65328148, 0.65328148), // real
-        q_wrist * Eigen::Quaterniond(-0.43713013, 0.57223282, -0.1477154, 0.67797271), // sim
+        // q_wrist * Eigen::Quaterniond(0.57223282, 0.43713013, 0.67797271, 0.1477154), // sim
+        q_wrist,
 
         Eigen::Quaterniond(
         pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT].orientation.w,
@@ -449,40 +454,45 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
 
 
     
-    std_msgs::Header header;
-    header.stamp = ros::Time::now();
-    qpos.header = header;
+    // std_msgs::Header header;
+    // header.stamp = ros::Time::now();
+    // // qpos.header = header;
 
-    for (int i = 0; i < 4; i++)
-    {
+    // for (int i = 0; i < 4; i++)
+    // {
 
-        double& current_FE = qpos_FE[i];
-        double& current_AA = qpos_AA[i];
+    //     double& current_FE = qpos_FE[i];
+    //     double& current_AA = qpos_AA[i];
 
-        Eigen::Vector2d& theta_est = ik::Anyteleopmethod(
-        local_frame_array[i], root_array[i], inter_array[i], tip_array[i],
-        current_FE, current_AA
-        );
+    //     Eigen::Vector2d& theta_est = ik::Anyteleopmethod(
+    //     local_frame_array[i], root_array[i], inter_array[i], tip_array[i],
+    //     current_FE, current_AA, i
+    //     );
 
-        // Efficient exponential smoothing (less multiplication)
-        double FE_delta = (1.0 - gamma) * (theta_est[0] - current_FE);
-        double AA_delta = (1.0 - gamma) * (theta_est[1] - current_AA);
+    //     if ( i == 0)
+    //     {
+    //         std::cout<<"FE : "<<theta_est[0]<<", AA : "<<theta_est[1]<<std::endl;
+    //     }
 
-        // Clamp deltas
-        FE_delta = std::clamp(FE_delta, -0.1, 0.1);
-        AA_delta = std::clamp(AA_delta, -0.05, 0.05);
+    //     // Efficient exponential smoothing (less multiplication)
+    //     double FE_delta = (1.0 - gamma) * (theta_est[0] - current_FE);
+    //     double AA_delta = (1.0 - gamma) * (theta_est[1] - current_AA);
 
-        // Update joint positions
-        current_FE += FE_delta;
-        current_AA += AA_delta;
+    //     // Clamp deltas
+    //     FE_delta = std::clamp(FE_delta, -0.1, 0.1);
+    //     AA_delta = std::clamp(AA_delta, -0.05, 0.05);
 
-        // Write back to qpos structure
-        qpos.position[i]     = current_AA;
-        qpos.position[i + 4] = current_FE;
+    //     // Update joint positions
+    //     current_FE += FE_delta;
+    //     current_AA += AA_delta;
 
-    };
+    //     // Write back to qpos structure
+    //     qpos.data[i]     = current_AA;
+    //     qpos.data[i + 4] = current_FE;
+
+    // };
     
-    qpos_pub.publish(qpos);
+    // qpos_pub.publish(qpos);
     // TODO: add node for Anytelop method
     // we should apply ema and clipping to this method too
 
@@ -663,7 +673,7 @@ void HMD::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
         // Lock mutex and update the shared image
         std::lock_guard<std::mutex> lock(imageMutex);
         latestImage = img.clone();
-        std::cerr << "[Info] image callback"<<std::endl;
+        // std::cerr << "[Info] image callback"<<std::endl;
     } catch (cv_bridge::Exception& e) {
         ROS_ERROR("cv_bridge exception: %s", e.what());
     }

@@ -6,6 +6,7 @@ from std_msgs.msg import Header
 import numpy as np
 import dynamixel_sdk as dxl 
 import threading
+import sys
 
 
 
@@ -36,9 +37,9 @@ EXTENDED_POSITION_CONTROL_MODE  = 4
 # Protocol version
 PROTOCOL_VERSION            = 2    
 
-DXL_ID = [131,132,133,134,135,136,137,138]
-DXL_ID_FE = [132,134,136,138]
-DXL_ID_AA = [131,133,135,137]
+DXL_ID = [11,12,21,22,31,32,41,42]
+DXL_ID_FE = [12,22,32,42]
+DXL_ID_AA = [11,21,31,41]
 CurLimit_FE = [450, 700, 450, 450]
 CurLimit_AA = [400, 400, 400, 400]
 CurLimit = CurLimit_AA + CurLimit_FE
@@ -79,7 +80,7 @@ ps_aa = np.array([[600,0,-500],[300,0,-300],[300,0,-300],[300,0,-300]]) #AA same
 # TODO : fix this parameters
 
 class Finalnode:
-    def __init__(self):
+    def __init__(self, mode=None):
         """
         Main function to initialize the node and retrieve calibration data from the ROS Parameter Server.
         """
@@ -89,9 +90,15 @@ class Finalnode:
         self.pub = rospy.Publisher("/hand_joint_command", JointState, queue_size=1)
         self.motor_pub = rospy.Publisher('/motor_values', Float64MultiArray, queue_size=1)
         self.current_pub = rospy.Publisher('/current_state', Float32MultiArray, queue_size = 1)
-        self.sub = rospy.Subscriber('/model_out', Float32MultiArray, self.callback)
+        self.sub = rospy.Subscriber('/model_out', Float32MultiArray, self.callback,queue_size = 1)
         self.recover = rospy.Subscriber('/recover', Int16, self.recovery)
-        self.mode = "real"
+        
+        if mode == None:
+            self.mode = "real"
+        elif mode == "base":
+            self.mode = "base"
+
+        print(self.mode)
         try:
             self.__init_dxl()
         except:
@@ -105,9 +112,20 @@ class Finalnode:
         self.joint_currents = np.zeros(NUM_JOINT,dtype=np.int16)
 
         # Check if the calibration parameter exists and retrieve it
-        if rospy.has_param('calibration/recorded_points'):
+        
+        if self.mode == "base":
+            rospy.loginfo("Baseline mode")
+            self.sub = rospy.Subscriber('/baseline', Float32MultiArray, self.callback, queue_size = 1)
+        
+        elif rospy.has_param('calibration/recorded_points'):
             self.cali_points = rospy.get_param('calibration/recorded_points')
             rospy.loginfo("Loaded calibration points: %s", self.cali_points)
+
+            self.init = np.array(self.cali_points[0])
+            self.extent = np.array(self.cali_points[1])
+            self.good  = np.array(self.cali_points[2])
+            self.thumb = np.array(self.cali_points[3])
+            self.sphere = np.array(self.cali_points[4])
         else:
             rospy.logerr("Calibration points not found on the parameter server.")
             self.disable_torque_all()
@@ -115,12 +133,7 @@ class Finalnode:
             return
 
 
-        self.init = np.array(self.cali_points[0])
-        self.extent = np.array(self.cali_points[1])
-        self.good  = np.array(self.cali_points[2])
-        self.thumb = np.array(self.cali_points[3])
-        self.sphere = np.array(self.cali_points[4])
-
+        
         self.initialized = True
 
 
@@ -210,39 +223,43 @@ class Finalnode:
             rospy.logwarn("Skipping callback: initialization not complete.")
             return
         # Convert incoming Float32MultiArray message to a NumPy array
-        raw_data = np.array(msg.data)
+        if self.mode != "base":
+            raw_data = np.array(msg.data)
+            # Compute flexion/extension (FE) based on calibration points
+            fe = self.compute_fe(raw_data)
 
-        # Compute flexion/extension (FE) based on calibration points
-        fe = self.compute_fe(raw_data)
+            # Compute abduction/adduction (AA) based on calibration points
+            aa = self.compute_aa(raw_data)
 
-        # Compute abduction/adduction (AA) based on calibration points
-        aa = self.compute_aa(raw_data)
+            # Apply rate limiting (delta clamp) to FE and AA
+            fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
+            aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
 
-        # Apply rate limiting (delta clamp) to FE and AA
-        fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
-        aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
+            # Update previous state for next iteration
+            self.FE_prev = fe_adjusted.copy()
+            self.AA_prev = aa_adjusted.copy()
 
-        # Update previous state for next iteration
-        self.FE_prev = fe_adjusted.copy()
-        self.AA_prev = aa_adjusted.copy()
-
-        # Apply finger-collision avoidance adjustments to AA
-        aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
+            # Apply finger-collision avoidance adjustments to AA
+            aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
+            combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
+            
+        elif self.mode == "base":
+            combined = msg.data
 
         # Concatenate AA and FE into a single command array
-        combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
-        if self.mode =='real':
+        
+        if self.mode in ("real", "base"):
             motor_value = self.joint_to_motor(combined)
             self.read_current()
             self.send_to_motors(motor_value)
             self.motor_pub.publish(motor_value)
+        elif self.mode == "sim":
+            # Publish JointState message (unchanged as requested)
+            joint_8 = JointState()
+            joint_8.header = Header()
+            joint_8.position = combined.tolist()
 
-        # Publish JointState message (unchanged as requested)
-        joint_8 = JointState()
-        joint_8.header = Header()
-        joint_8.position = combined.tolist()
-
-        self.pub.publish(joint_8)
+            self.pub.publish(joint_8)
         
         
 
@@ -287,6 +304,7 @@ class Finalnode:
         return aa
     
     def joint_to_motor(self,q_pos):  # TODO : check the logic after param tuning
+        rospy.loginfo("motor callback")
         for i in range(4):
             desired_pos_fe[i] = init_fe[i] + int((ps_fe[i,2]-ps_fe[i,0]) * q_pos[i+4] * 0.7692 ) # 1 / 1.3
             desired_pos_aa[i] = init_aa[i] + int((ps_aa[i,2]-ps_aa[i,0]) * (q_pos[i]))      
@@ -304,6 +322,8 @@ class Finalnode:
         
         motor_values = Float64MultiArray()
         motor_values.data = desired_pos_aa + desired_pos_fe
+
+        print(q_pos)
         
         return motor_values
     
@@ -400,8 +420,13 @@ class Finalnode:
 
 if __name__ == '__main__':
     
+    if len(sys.argv) > 1:
+        mode = sys.argv[1]
+    else:
+        mode = None
+    
+    node = Finalnode(mode=mode)
     try:
-        node = Finalnode()
         rospy.spin()
     finally:
         node.disable_torque_all()

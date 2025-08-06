@@ -110,7 +110,7 @@ private:
     geometry_msgs::PoseArray           pose_array;
     std_msgs::Float32MultiArray        angle_array;
     std_msgs::Float32MultiArray        data_array;
-    sensor_msgs::JointState            qpos;
+    std_msgs::Float32MultiArray        qpos;
     std::vector<int>                   specific_indices = kSpecificIndices;
 
     // for model data

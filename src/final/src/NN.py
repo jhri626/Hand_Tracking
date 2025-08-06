@@ -20,7 +20,7 @@ from scipy.signal import butter, lfilter, lfilter_zi
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/euler_epoch1000.npz'
+MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/euler_epoch1000_ver6.npz'
 
 NUM_JOINTS = 20
 NUM_BONES  = 19
@@ -187,7 +187,7 @@ class InferenceNode(object):
         
         # Exponential Moving Average parameters
         # smoothing factor alpha: higher -> output tracks new values more closely
-        self.ema_alpha = 0.5
+        self.ema_alpha = 0.01
         self.ema       = None  # stores previous EMA value, shape (1,8)
 
         # ROS I/O

@@ -9,6 +9,8 @@
 #include <ceres/ceres.h>
 #include <pose_utils.h>
 #include <hand_number.h>
+#include "ceres/rotation.h"
+
 
 
 #include <type_traits> // for debug
@@ -23,6 +25,7 @@ namespace ik {
       const Eigen::Vector3d p_ref,
       const geometry_msgs::Pose& pose_target,
       double L1, double L2, double theta_init_x, double theta_init_y);
+      
   Eigen::Vector3d inversekinematicsIndex(
     const ros::Publisher& pub,
     const Eigen::Quaterniond q_ref, 
@@ -35,10 +38,12 @@ namespace ik {
                                   const geometry_msgs::Pose& pose_inter,
                                   const geometry_msgs::Pose& pose_target,
                                   double d_pre,
-                                  double AA);
+                                  double AA,
+                                  int idx);
+
 
   // Compute MCP flexion angle from prismatic displacement d
-    float computeMCPFlexionFromD(float d);
+    // float computeMCPFlexionFromD(float d);
   
   
   // Cost functor for Ceres Solver
@@ -54,9 +59,12 @@ namespace ik {
   
     template <typename T>
     bool operator()(const T* const theta, T* residual) const {
-      T x = ceres::cos(M_PI *9/18) * ( - T(L2_) * ceres::sin(theta[1]) ) - ceres::sin(M_PI *9/18) * ( - T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]));
-      T y = ceres::sin(M_PI *9/18) * ( - T(L2_) * ceres::sin(theta[1]) ) + ceres::cos(M_PI *9/18) * ( - T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]));
-      T z = - T(L1_) - T(L2_) * ceres::cos(theta[0]) * ceres::cos(theta[1]);
+      // T x = ceres::cos(M_PI *9/18) * ( - T(L2_) * ceres::sin(theta[1]) ) - ceres::sin(M_PI *9/18) * ( - T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]));
+      // T y = ceres::sin(M_PI *9/18) * ( - T(L2_) * ceres::sin(theta[1]) ) + ceres::cos(M_PI *9/18) * ( - T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]));
+      // T z = - T(L1_) - T(L2_) * ceres::cos(theta[0]) * ceres::cos(theta[1]);
+      T x =  T(L2_) * ceres::sin(theta[0]);
+      T y = - ceres::sin(theta[1]) * ( T(L1_) + T(L2_) * ceres::cos(theta[0]));
+      T z = - ceres::cos(theta[1]) * ( T(L1_) + T(L2_) * ceres::cos(theta[0]));
       residual[0] = x - T(target_position_.x());
       residual[1] = y - T(target_position_.y());
       residual[2] = z - T(target_position_.z());
@@ -163,8 +171,85 @@ struct EEPositionFromDA_Functor {
       residual[3] = x - T(inter_position_.x());
       residual[4] = y - T(inter_position_.y());
       residual[5] = z - T(inter_position_.z());
+
       
 
+
+      
+
+      return true;
+    }
+
+  private:
+      const Eigen::Vector3d target_position_;
+      const Eigen::Vector3d inter_position_;
+  };
+
+
+  struct EEPositionFromDA_Functor_Thumb {
+    explicit EEPositionFromDA_Functor_Thumb(const Eigen::Vector3d& inter_pos ,const Eigen::Vector3d& target_pos)
+        : inter_position_(inter_pos), target_position_(target_pos) {}
+
+    template <typename T>
+    bool operator()(const T* const vars, T* residual) const {
+        
+      T mcp_f = vars[0];
+      T mcp_a = vars[1];
+      T pip = -0.1108 * ceres::pow(mcp_f, T(4.0)) + 0.3230 * ceres::pow(mcp_f, T(3.0)) - 0.2964 * ceres::pow(mcp_f, T(2.0)) + 1.2475 * mcp_f + T(0.0034);
+      T dip =  0.1005 * ceres::pow(mcp_f, T(5.0)) + 0.3467 * ceres::pow(mcp_f, T(4.0)) - 0.4016 * ceres::pow(mcp_f, T(3.0)) + 0.3414 * ceres::pow(mcp_f, T(2.0)) + 0.6245 * mcp_f - T(0.00087);
+
+      
+      T inter_x = - (HAND_la + HAND_lm*cos(mcp_f)) * sin(mcp_a);
+      T inter_y = - (HAND_lm*sin(mcp_f));
+      T inter_z = - (HAND_la + HAND_lm*cos(mcp_f)) * cos(mcp_a);
+      
+      T x = inter_x - (HAND_lp*cos(mcp_f + pip) + HAND_ld*cos(mcp_f + pip + dip)) * sin(mcp_a);
+      T y = inter_y - (HAND_lp*sin(mcp_f + pip) + HAND_ld*sin(mcp_f + pip + dip));
+      T z = inter_z - (HAND_lp*cos(mcp_f + pip) + HAND_ld*cos(mcp_f + pip + dip)) * cos(mcp_a);
+
+
+      T quat[4] = { T(0.67797271), T(0.1477154), T(0.57223282), T(0.43713013) };
+
+      T ee_finger[3] = { x, y, z };
+      T inter_finger[3] ={ inter_x, inter_y, inter_z};
+      T ee_wrist[3];  // rotated EE position
+      T inter_wrist[3];
+      ceres::QuaternionRotatePoint(quat, ee_finger, ee_wrist);
+      ceres::QuaternionRotatePoint(quat, inter_finger, inter_wrist);
+
+
+      T translation[3] = { T(-29.913), T(-33.338), T(-57.26) };
+
+      ee_wrist[0] += translation[0];
+      ee_wrist[1] += translation[1];
+      ee_wrist[2] += translation[2];
+
+      inter_wrist[0] += translation[0];
+      inter_wrist[1] += translation[1];
+      inter_wrist[2] += translation[2];
+
+
+
+
+      residual[0] = ee_wrist[0] - T(target_position_.x());
+      residual[1] = ee_wrist[1] - T(target_position_.y());
+      residual[2] = ee_wrist[2] - T(target_position_.z());
+
+      residual[3] = inter_wrist[0] - T(inter_position_.x());
+      residual[4] = inter_wrist[1] - T(inter_position_.y());
+      residual[5] = inter_wrist[2] - T(inter_position_.z());
+
+
+      // if constexpr (std::is_same<T, double>::value) {
+      // std::cout << "x: " << x << ", y: " << y << ", z: " << z << std::endl;
+      // std::cout << "target_position: "
+      //           << target_position_.x() << ", "
+      //           << target_position_.y() << ", "
+      //           << target_position_.z() << std::endl;
+      
+
+      
+      // }
       return true;
     }
 

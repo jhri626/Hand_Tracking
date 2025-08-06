@@ -58,13 +58,12 @@ HMD::HMD(int arc, char *arv[])
     FE_joint = {0.0, 0.0, 0.0, 0.0};
     qpos_FE = {0.0,0.0,0.0,0.0};
     qpos_AA = {0.0,0.0,0.0,0.0};
-    gamma = 0.7;
+    gamma = 0.1;
     fingernum = 4;
     m_Index_ik = {-M_PI/36,-M_PI/36,-M_PI/44};
     
-    qpos.name.resize(8);
-    qpos.position.resize(8);
-    qpos.name = {"thumbAA", "indexAA", "middleAA", "ringAA","thumbFE", "indexFE", "middleFE", "ringFE"};
+    qpos.data.resize(8);
+    // qpos.name = {"thumbAA", "indexAA", "middleAA", "ringAA","thumbFE", "indexFE", "middleFE", "ringFE"};
 
 }
 
@@ -93,7 +92,7 @@ int HMD::init()
     hand_sync_pub = nh.advertise<vr::HandSyncData>("hand_sync_data", 1);
     rviz_pub = nh.advertise<geometry_msgs::PoseArray>("rviz", 1);
     data_pub = nh.advertise<std_msgs::Float32MultiArray>("data", 1);
-    qpos_pub = nh.advertise<sensor_msgs::JointState>("/hand_joint_command", 1);
+    qpos_pub = nh.advertise<std_msgs::Float32MultiArray>("/baseline", 1);
 
     marker_pub = nh.advertise<visualization_msgs::Marker>("visualization_marker", 1); // debug tool
 
