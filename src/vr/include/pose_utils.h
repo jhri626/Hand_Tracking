@@ -36,7 +36,7 @@ Eigen::Vector3d computePlane(const geometry_msgs::Pose &pose_meta, const geometr
 
 double computeAngle(const Eigen::Vector3d &v1,const Eigen::Vector3d &v2 );
 
-Eigen::Vector2d jointAngle(ros::Publisher& pub,Eigen::Vector3d &normal, const geometry_msgs::Pose &pose_meta, const geometry_msgs::Pose &pose_proxi,const geometry_msgs::Pose &pose_inter);
+Eigen::Vector2d jointAngle(ros::Publisher& pub,const Eigen::Vector3d &normal, const geometry_msgs::Pose &pose_meta, const geometry_msgs::Pose &pose_proxi,const geometry_msgs::Pose &pose_inter);
 } // namespace pose_utils
 
 #endif // POSE_UTILS_H

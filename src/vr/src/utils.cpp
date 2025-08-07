@@ -56,3 +56,37 @@ bool CreateRenderWindow(HWND& hWnd)
     }
     return true;
 }
+
+Eigen::Vector3d getPositionfromArray(
+    const geometry_msgs::PoseArray& poses, size_t idx)
+{
+    const auto& p = poses.poses[idx].position;
+
+    return {p.x, p.y, p.z};
+}
+
+
+Eigen::Vector3d getPositionfromPose(
+    const geometry_msgs::Pose& pose)
+{
+    const auto& p = pose.position;
+
+    return {p.x, p.y, p.z};
+}
+
+Eigen::Quaterniond getQuaternionfromArray(
+    const geometry_msgs::PoseArray& poses, 
+    size_t idx)
+{
+    const auto& o = poses.poses[idx].orientation;
+    return {o.w, o.x, o.y, o.z};
+}
+
+Eigen::Quaterniond getQuaternionfromPose(
+    const geometry_msgs::Pose& pose)
+{
+    const auto& o = pose.orientation;
+    return {o.w, o.x, o.y, o.z};
+}
+
+

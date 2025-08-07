@@ -80,28 +80,28 @@ class Skeleton2AngleNumPy(object):
     # --------------------------------------------------------------------- #
     def forward(self, skeletons_data):
         """
-        Input : skeletons_flat (B, 64) - 20 joints * 3 coords + 4 quaternion.
-        Output: (B, 8) - angle vector (no scaling applied).
+        Input : skeletons_flat (B, 64) - 20 joints * 3 coords + 3 euler angle.
+        Output: (B, 3) - angle vector (no scaling applied).
         """
         B = skeletons_data.shape[0]
 
-        ori = skeletons_data[:, -3:]                     # (B,4)
+        ori = skeletons_data[:, -3:]                     # (B,3)
         flat_joints = skeletons_data[:, :-3]             # (B,60)
 
         # 1 | reshape joints
         skel = flat_joints.reshape(B, NUM_JOINTS, 3)                # (B,20,3)
 
         # 2 | bone endpoints
-        parents  = skel[:, bone_parents, :]                            # (B,19,3)
+        parents  = skel[:, bone_parents, :]                            # (B,20,3)
         children = skel[:, bone_children, :]
-        Bk = np.concatenate([parents, children], axis=-1)              # (B,19,6)
+        Bk = np.concatenate([parents, children], axis=-1)              # (B,20,6)
 
         # 3 | positional encodings
-        pe_bk = self.position_encoding(Bk, PE_FREQ_BK)                 # (B,19,60)
+        pe_bk = self.position_encoding(Bk, PE_FREQ_BK)                 # (B,20,60)
 
-        eye_nb = np.eye(NUM_BONES, dtype=np.float32)                   # (19,19)
-        ok     = np.broadcast_to(eye_nb, (B, NUM_BONES, NUM_BONES))    # (B,19,19)
-        pe_ok  = self.position_encoding(ok, PE_FREQ_OK)                # (B,19,76)
+        eye_nb = np.eye(NUM_BONES, dtype=np.float32)                   # (20,20)
+        ok     = np.broadcast_to(eye_nb, (B, NUM_BONES, NUM_BONES))    # (B,20,20)
+        pe_ok  = self.position_encoding(ok, PE_FREQ_OK)                # (B,20,76)
 
         # 4 | global spatial descriptor g
         flat = skel.reshape(B, -1)                                     # (B,60)
@@ -110,10 +110,10 @@ class Skeleton2AngleNumPy(object):
         g    = self.linear(g, 'gsd_mlp.2')
         g    = self.gelu(g)
         g    = self.linear(g, 'gsd_mlp.4')                             # (B,100)
-        g    = g[:, None, :].repeat(NUM_BONES, axis=1)                 # (B,19,100)
+        g    = g[:, None, :].repeat(NUM_BONES, axis=1)                 # (B,20,100)
 
         oe = np.dot(ori, self.params['orientation_embed.weight'].T) + self.params['orientation_embed.bias']
-        oe = oe[:, None, :].repeat(NUM_BONES, axis=1)      # (B,19,3)
+        oe = oe[:, None, :].repeat(NUM_BONES, axis=1)      # (B,20,3)
 
 
         # 5 | OE feature
@@ -121,7 +121,7 @@ class Skeleton2AngleNumPy(object):
 
         
         # --- four heads -------------------------------------------------- #
-        def head(OE, name):                                            # -> (B,19,C)
+        def head(OE, name):                                            # -> (B,20,C)
             h = self.linear(OE, name + '.0')
             h = self.leaky_relu(h)
             h = self.linear(h, name + '.2')
@@ -129,23 +129,23 @@ class Skeleton2AngleNumPy(object):
             h = self.linear(h, name + '.4')
             return h
 
-        out1 = head(OE, 'head1')                                       # (B,19,1)
-        out2 = head(OE, 'head2')                                       # (B,19,1)
-        out3 = head(OE, 'head3')                                       # (B,19,1)
+        out1 = head(OE, 'head1')                                       # (B,20,1)
+        out2 = head(OE, 'head2')                                       # (B,20,1)
+        out3 = head(OE, 'head3')                                       # (B,20,1)
         
 
         # --- pooling along bone dim ------------------------------------- #
-        def pool(x, pool_name):                                        # (B,C,19) or (B,19)
-            w = self.params[pool_name + '.weight']                     # (1,19)
+        def pool(x, pool_name):                                        # (B,C,20) or (B,20)
+            w = self.params[pool_name + '.weight']                     # (1,20)
             b = self.params[pool_name + '.bias'][0]                    # scalar
             return (x * w).sum(axis=-1) + b                            # (B,C) or (B,)
 
         # out1 / out2: transpose bones last -> last dim
-        o1 = out1.squeeze(-1)                                          # (B,19)
-        o2 = out2.squeeze(-1)                                          # (B,19)
+        o1 = out1.squeeze(-1)                                          # (B,20)
+        o2 = out2.squeeze(-1)                                          # (B,20)
 
         # out3 / out4: squeeze last singleton
-        o3 = out3.squeeze(-1)                                          # (B,19)
+        o3 = out3.squeeze(-1)                                          # (B,20)
         
 
         agg1 = pool(o1, 'pool1')[:, None]                              # (B,1)
