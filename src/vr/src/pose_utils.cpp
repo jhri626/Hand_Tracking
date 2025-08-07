@@ -6,6 +6,7 @@
 #include <iostream>
 #include <Eigen/Geometry>
 #include <cmath>
+#include "utils.h"
 
 visualization_msgs::Marker vectorToArrowMarker(
     const Eigen::Vector3d& start,
@@ -50,18 +51,8 @@ namespace pose_utils {
     geometry_msgs::Vector3 poseToEulerAngles(const geometry_msgs::Pose &pose_ref,const geometry_msgs::Pose &pose_target) {
         // Create an Eigen quaternion from the pose's orientation.
         // Eigen::Quaterniond takes the order (w, x, y, z)
-        Eigen::Quaterniond q_ref(
-            pose_ref.orientation.w,
-            pose_ref.orientation.x,
-            pose_ref.orientation.y,
-            pose_ref.orientation.z
-        );
-        Eigen::Quaterniond q_target(
-            pose_target.orientation.w,
-            pose_target.orientation.x,
-            pose_target.orientation.y,
-            pose_target.orientation.z
-        );
+        Eigen::Quaterniond q_ref = getQuaternionfromPose(pose_ref);
+        Eigen::Quaterniond q_target = getQuaternionfromPose(pose_target);
         
         // Normalize the quaternion to ensure numerical stability
         q_ref.normalize();
@@ -102,23 +93,11 @@ namespace pose_utils {
     Eigen::Vector3d computePlane(const geometry_msgs::Pose &pose_meta, const geometry_msgs::Pose &pose_proxi_1,const geometry_msgs::Pose &pose_proxi_2) 
     {
         
-        Eigen::Vector3d meta_position(
-            pose_meta.position.x,
-            pose_meta.position.y,
-            pose_meta.position.z
-        );  
+        Eigen::Vector3d meta_position = getPositionfromPose(pose_meta);
 
-        Eigen::Vector3d proxi_position_1(
-            pose_proxi_1.position.x,
-            pose_proxi_1.position.y,
-            pose_proxi_1.position.z
-        );
+        Eigen::Vector3d proxi_position_1 = getPositionfromPose(pose_proxi_1);
 
-        Eigen::Vector3d proxi_position_2(
-            pose_proxi_2.position.x,
-            pose_proxi_2.position.y,
-            pose_proxi_2.position.z
-        );
+        Eigen::Vector3d proxi_position_2 = getPositionfromPose(pose_proxi_2);
 
         Eigen::Vector3d v1 = proxi_position_1 - meta_position;
         Eigen::Vector3d v2 = proxi_position_2 - meta_position;
@@ -145,44 +124,25 @@ namespace pose_utils {
         return angle_deg;
     }
 
-    Eigen::Vector2d jointAngle(ros::Publisher& pub,Eigen::Vector3d &normal,const geometry_msgs::Pose &pose_meta, const geometry_msgs::Pose &pose_proxi,const geometry_msgs::Pose &pose_inter)
+    Eigen::Vector2d jointAngle(ros::Publisher& pub,const Eigen::Vector3d &normal,const geometry_msgs::Pose &pose_meta, const geometry_msgs::Pose &pose_proxi,const geometry_msgs::Pose &pose_inter)
     {
-        Eigen::Vector3d meta_position(
-            pose_meta.position.x,
-            pose_meta.position.y,
-            pose_meta.position.z
-        );
+        Eigen::Vector3d meta_position = getPositionfromPose(pose_meta);
+            
 
-        Eigen::Vector3d proxi_position(
-            pose_proxi.position.x,
-            pose_proxi.position.y,
-            pose_proxi.position.z
-        );
+        Eigen::Vector3d proxi_position = getPositionfromPose(pose_proxi);
 
-        Eigen::Vector3d inter_position(
-            pose_inter.position.x,
-            pose_inter.position.y,
-            pose_inter.position.z
-        );  
+        Eigen::Vector3d inter_position = getPositionfromPose(pose_inter);
 
         Eigen::Vector3d v1 = proxi_position - meta_position;
         Eigen::Vector3d v3 = inter_position - proxi_position;
 
-        Eigen::Quaterniond q_meta(
-            pose_meta.orientation.w,
-            pose_meta.orientation.x,
-            pose_meta.orientation.y,    
-            pose_meta.orientation.z
-        );
+        Eigen::Quaterniond q_meta = getQuaternionfromPose(pose_meta);
 
         Eigen::Matrix3d mat = q_meta.normalized().toRotationMatrix();
         Eigen::Vector3d x_axis = mat.col(0);
 
         Eigen::Vector3d v4 = normal.cross(v1);
         Eigen::Vector3d projectionV3 = v3 - v3.dot(normal)*normal;
-        
-
-
         
         double jointFE = computeAngle(v3,projectionV3);
         double jointAA = 90 - computeAngle(v3,v4);
