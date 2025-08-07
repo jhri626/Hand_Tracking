@@ -18,3 +18,4 @@ others/
 *.pkl
 *.bag
 model/plot.ipynb
+*.png

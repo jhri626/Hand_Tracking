@@ -8,6 +8,7 @@
 #include <ceres/ceres.h>
 #include <ceres/loss_function.h>
 #include <lie_utils.h>
+#include"utils.h"
 
 
 namespace ik {
@@ -15,16 +16,8 @@ namespace ik {
                    const geometry_msgs::Pose& pose_target, double L1, double L2, double theta_init_x, double theta_init_y)
     {
         // 1) Convert poses to Eigen
-        Eigen::Quaterniond q_tgt(
-            pose_target.orientation.w,
-            pose_target.orientation.x,
-            pose_target.orientation.y,
-            pose_target.orientation.z);
-
-        Eigen::Vector3d p_tgt(
-            pose_target.position.x,
-            pose_target.position.y,
-            pose_target.position.z);
+        Eigen::Quaterniond q_tgt = getQuaternionfromPose(pose_target);
+        Eigen::Vector3d p_tgt = getPositionfromPose(pose_target);
 
         // 2) Compute relative SE(3) and extract translation
         Eigen::Matrix4d T_rel = mr::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
@@ -106,17 +99,9 @@ namespace ik {
         const geometry_msgs::Pose& pose_target,double L1, double L2, double theta_init_1,double theta_init_2, double theta_init_3, const std::string& mode)
         {
                 // 1) Convert poses to Eigen
-            Eigen::Quaterniond q_tgt(
-                pose_target.orientation.w,
-                pose_target.orientation.x,
-                pose_target.orientation.y,
-                pose_target.orientation.z);
-
-            Eigen::Vector3d p_tgt(
-                pose_target.position.x,
-                pose_target.position.y,
-                pose_target.position.z);
-
+            Eigen::Quaterniond q_tgt = getQuaternionfromPose(pose_target);
+            Eigen::Vector3d p_tgt = getPositionfromPose(pose_target);
+            
             // 2) Compute relative SE(3) and extract translation
             Eigen::Matrix4d T_rel = mr::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
             Eigen::Vector3d target_pos = T_rel.block<3,1>(0,3);
@@ -243,27 +228,10 @@ namespace ik {
                 const geometry_msgs::Pose& pose_target, double d_pre, double AA, int idx)
         {
                 // 1) Convert poses to Eigen
-            Eigen::Quaterniond q_tgt(
-                pose_target.orientation.w,
-                pose_target.orientation.x,
-                pose_target.orientation.y,
-                pose_target.orientation.z);
-
-            Eigen::Vector3d p_tgt(
-                pose_target.position.x,
-                pose_target.position.y,
-                pose_target.position.z);
-            
-            Eigen::Quaterniond q_inter(
-                pose_inter.orientation.w,
-                pose_inter.orientation.x,
-                pose_inter.orientation.y,
-                pose_inter.orientation.z);
-
-            Eigen::Vector3d p_inter(
-                pose_inter.position.x,
-                pose_inter.position.y,
-                pose_inter.position.z);
+            Eigen::Quaterniond q_tgt = getQuaternionfromPose(pose_target);
+            Eigen::Vector3d p_tgt = getPositionfromPose(pose_target);
+            Eigen::Quaterniond q_inter = getQuaternionfromPose(pose_inter);
+            Eigen::Vector3d p_inter = getPositionfromPose(pose_inter);
 
             // 2) Compute relative SE(3) and extract translation
             Eigen::Matrix4d T_rel = mr::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);

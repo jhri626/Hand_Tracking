@@ -63,6 +63,20 @@ public:
     void renderAndSubmitFrame(const XrFrameState& frameState);
     void imageCallback(const sensor_msgs::ImageConstPtr& msg);
     void currentCallback(const std_msgs::Float32MultiArray::ConstPtr& msg);
+
+    Eigen::Vector2d computeThumbAngles(
+        const geometry_msgs::PoseArray& poses,
+        const Eigen::Quaterniond& q_wrist,
+        const Eigen::Vector3d& p_wrist,
+        double smoothing_gamma
+    );
+
+    Eigen::Vector2d computeFingerAngles(
+        const geometry_msgs::PoseArray& poses,
+        int idx,
+        const Eigen::Vector3d& y_axis,
+        double smoothing_gamma
+    );
     //debug    
     
 
@@ -111,7 +125,6 @@ private:
     std_msgs::Float32MultiArray        angle_array;
     std_msgs::Float32MultiArray        data_array;
     std_msgs::Float32MultiArray        qpos;
-    std::vector<int>                   specific_indices = kSpecificIndices;
 
     // for model data
     std::vector<float>                 latest_angles;
@@ -127,7 +140,7 @@ private:
     std::array<double, 4> qpos_FE;
     std::array<double, 4> qpos_AA;
     double gamma;
-    int fingernum;
+    int fingernum_;
 
     // for ik
     Eigen::Vector3d temp;

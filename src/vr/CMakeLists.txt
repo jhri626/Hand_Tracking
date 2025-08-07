@@ -1,141 +1,88 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(vr)
 
+# C++ Settings
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Compiler Options & Definitions
 if(MSVC)
-  add_compile_options(/wd4005)
-  add_compile_options(/source-charset:utf-8)
+  add_compile_options(/wd4005 /source-charset:utf-8 /EHsc)
 endif()
-
-add_compile_definitions(GLOG_NO_ABBREVIATED_SEVERITIES)
-add_compile_definitions(_SILENCE_CXX17_NEGATORS_DEPRECATION_WARNING)
-add_compile_definitions(_SILENCE_CXX17_OLD_ALLOCATOR_MEMBERS_DEPRECATION_WARNING)
-
-set(CMAKE_AUTOMOC ON)
-
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
-## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
-
-## Find catkin macros and libraries
-## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
-## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  std_msgs
-  tf
-  image_transport
-  message_generation
-  message_runtime
-  geometry_msgs
-  sensor_msgs
-  cv_bridge
-  eigen3
+add_compile_definitions(
+  GLOG_NO_ABBREVIATED_SEVERITIES
+  _SILENCE_CXX17_NEGATORS_DEPRECATION_WARNING
+  _SILENCE_CXX17_OLD_ALLOCATOR_MEMBERS_DEPRECATION_WARNING
 )
 
-
+# ROS & Message Configuration
+find_package(catkin REQUIRED COMPONENTS
+  roscpp std_msgs geometry_msgs tf image_transport sensor_msgs cv_bridge message_generation
+)
 add_message_files(
   FILES
-  HandSyncData.msg
-  JointState.msg
+    HandSyncData.msg
+    JointState.msg
 )
+generate_messages(DEPENDENCIES std_msgs geometry_msgs)
+catkin_package(CATKIN_DEPENDS roscpp std_msgs geometry_msgs message_runtime)
+include_directories(${catkin_INCLUDE_DIRS})
 
-generate_messages(
-  DEPENDENCIES std_msgs geometry_msgs
-)
-
-catkin_package(
-  INCLUDE_DIRS include
-  CATKIN_DEPENDS roscpp std_msgs geometry_msgs message_runtime
-)
-
-find_package(OpenCV REQUIRED
-  NO_MODULE
-  PATHS C:/Users/dyros/cv/opencv-3.4.13/build
-  NO_DEFAULT_PATH
-)
-
+# Third-Party Dependencies
+find_package(OpenCV REQUIRED NO_MODULE PATHS "C:/Users/dyros/cv/opencv-3.4.13/build")
 find_package(Ceres REQUIRED)
 find_package(gflags REQUIRED)
-find_package(glog   REQUIRED)
+find_package(glog REQUIRED)
 
-foreach(module Core Gui Widgets)
-    find_package(Qt5 REQUIRED COMPONENTS ${module})
-    list(APPEND QT_INCLUDE_DIRS "${Qt5${module}_INCLUDE_DIRS}")
-    list(APPEND QT_LIBRARIES    "${Qt5${module}_LIBRARIES}")
-    list(APPEND QT_FLAGS        "${Qt5${module}_EXECUTABLE_COMPILE_FLAGS}")
-    list(APPEND QT_DEFINITIONS  "${Qt5${module}_DEFINITIONS}")
-endforeach()
+# Qt Module Configuration
+set(QT_MODULES Core Gui Widgets)
+find_package(Qt5 REQUIRED COMPONENTS ${QT_MODULES})
+set(QT_INCLUDES  ${Qt5Core_INCLUDE_DIRS} ${Qt5Gui_INCLUDE_DIRS} ${Qt5Widgets_INCLUDE_DIRS})
+set(QT_LIBRARIES ${Qt5Core_LIBRARIES} ${Qt5Gui_LIBRARIES} ${Qt5Widgets_LIBRARIES})
+set(QT_COMPILE_FLAGS
+  ${Qt5Core_EXECUTABLE_COMPILE_FLAGS}
+  ${Qt5Gui_EXECUTABLE_COMPILE_FLAGS}
+  ${Qt5Widgets_EXECUTABLE_COMPILE_FLAGS}
+)
 
-list(REMOVE_DUPLICATES QT_FLAGS)
-include_directories(${OpenCV_INCLUDE_DIRS})
-include_directories(${QT_INCLUDE_DIRS})
-
-set (LIBS_INCLUDE 
-    ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/include
-    ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party
-    ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/
-    ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glad/include
-    ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glfw/include
-    ${CMAKE_SOURCE_DIR}/vr/include
-  )
-
-include_directories(
-  ${catkin_INCLUDE_DIRS}
-  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/include
-  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party
-  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/include
-  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/include
-  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/include/extensions
-  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glad/include
-  ${CMAKE_SOURCE_DIR}/vr/third_party/ceres-solver/include
+# Deduplicate each list separately
+list(REMOVE_DUPLICATES QT_INCLUDES)
+list(REMOVE_DUPLICATES QT_LIBRARIES)
+list(REMOVE_DUPLICATES QT_COMPILE_FLAGS)
+# Source Files and Include Paths
+set(SOURCES
+  src/HMD_main.cpp
+  src/HMD.cpp
+  src/HMD_publish.cpp
+  src/HMD_init.cpp
+  src/utils.cpp
+  src/pose_utils.cpp
+  src/ik.cpp
+  src/lie_utils.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider/Sandbox/third_party/glad/src/glad.c
+)
+set(THIRD_PARTY_INCLUDES
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider/OpenXRProvider/third_party/
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider/OpenXRProvider/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider/Sandbox/third_party/glad/include
   ${CERES_INCLUDE_DIRS}
   ${GFLAGS_INCLUDE_DIRS}
   ${GLOG_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
+  ${QT_INCLUDES}  
 )
 
-set(SOURCES
-    # src/main.cpp
-    # src/RenderSubmitFrame.cpp
-    # src/OpenXRInitialization.cpp
-    # src/FrameProcessor.cpp
-###########################################
-    src/HMD_main.cpp
-    src/HMD.cpp
-    src/HMD_publish.cpp
-    src/HMD_init.cpp
-    src/utils.cpp
-    src/pose_utils.cpp
-    src/ik.cpp
-    src/lie_utils.cpp
-    # src/kalman.cpp
 
-    # src/Swapchain.cpp
-    ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glad/src/glad.c
-    
+# Build Target Definition
+add_executable(${PROJECT_NAME}_node ${SOURCES})
+add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+
+target_include_directories(${PROJECT_NAME}_node PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
-
-set(HEADERS
-#     # src/RenderSubmitFrame.h
-#     # src/OpenXRInitialization.h
-#     # src/FrameProcessor.h
-#     # src/Swapchain.h
-#     ##############################
-      # src/utils.h
-    
-)
-
-# Add additional libraries
-
-
-# 실행 파일 생성
-add_executable(${PROJECT_NAME}_node ${SOURCES} ${HEADERS})
-add_dependencies(${PROJECT_NAME}_node
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-)
-# add_executable(rviz_node src/rviz.cpp)
 
 target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
@@ -143,172 +90,14 @@ target_link_libraries(${PROJECT_NAME}_node
   ${CERES_LIBRARIES}
   ${GFLAGS_LIBRARIES}
   ${GLOG_LIBRARIES}
-  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/x64/lib/openxr_loader.lib
+  "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/x64/lib/openxr_loader.lib"
+  "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/OpenXRProvider.lib"
+  "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glfw/lib/glfw3.lib"
   opengl32.lib
-  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/OpenXRProvider.lib
-  ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glfw/lib/glfw3.lib
 )
 
-# target_link_libraries(rviz_node
-# ${catkin_LIBRARIES}
-# )
-
-target_compile_options(${PROJECT_NAME}_node PRIVATE /EHsc)
-target_include_directories(${PROJECT_NAME}_node PRIVATE ${LIBS_INCLUDE})
-
-
-
-# add_custom_command(TARGET ${PROJECT_NAME}_node POST_BUILD
-#   COMMAND ${CMAKE_COMMAND} -E copy_if_different
-#   "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/x64/bin/openxr_loader.dll"
-#   "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/openXRProvider.dll"
-#   $<TARGET_FILE_DIR:${PROJECT_NAME}_node>
-# )
-
-
-
-# set (LIBS_SOURCES
-#     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glad/src/glad.c)
-
-# # Add project public include directories
-# set (OPENXR_SANDBOX_INCLUDE
-#         ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox
-# 		${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/include
-#         ${LIBS_INCLUDE}
-# 	)
-# message(STATUS "Added OpenXR Sandbox public include directories: 
-#     \ ${OPENXR_SANDBOX_INCLUDE}")
-
-# # Find all project header files
-# file(GLOB OPENXR_SANDBOX_HEADERS
-#         "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/*.h" 
-# 	    "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/include/*.h" 
-#         "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/src/*.h"
-# 	)
-# message(STATUS "Found OpenXR Sandbox headers
-#     \ ${OPENXR_SANDBOX_HEADERS}")
-
-
-# Find all project source files
-# file(GLOB OPENXR_SANDBOX_SOURCE
-#         "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/*.cpp"
-# 	    "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/src/*.cpp"
-#         "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/src/shaders/*.glsl"
-#         "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/stb/*.cpp"
-# 	)
-# message(STATUS "Found OpenXR Sandbox source
-#     \  ${OPENXR_SANDBOX_SOURCE}")
-
-# # Set project public include directories
-# include_directories(Sandbox PUBLIC
-#     ${OPENXR_SANDBOX_INCLUDE}
-#     )
-
-# # Add project header and source files to project
-# add_executable(Sandbox 
-#     ${OPENXR_SANDBOX_HEADERS} 
-#     ${OPENXR_SANDBOX_SOURCE}
-#     ${LIBS_SOURCES})
-
-# Set output directories
-# set_target_properties(Sandbox PROPERTIES
-#     ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin"
-#     LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin"
-#     RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin"
-#     ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin"
-#     LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin"
-#     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin"
-# )
-
-# GLFW
-set(LIB_GLFW "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glfw/lib/glfw3.lib")
-
-# OpenGL
-set(LIB_OPENGL "opengl32.lib")
-
-# Add libraries
-# target_link_libraries(Sandbox PUBLIC 
-#     # ${LIB_GLFW}
-#     opengl32.lib
-#     C:/Users/dyros/Desktop/dummy_ws/src/vr/third_party/OpenXRProvider/bin/OpenXRProvider.lib
-#     )
-
-# # Post-Build
-# add_custom_command(TARGET Sandbox POST_BUILD
-
-# 		COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin/logs
-
-#         COMMAND ${CMAKE_COMMAND} -E copy
-#             ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/x64/lib/openxr_loader.lib
-#             ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/openxr_loader.lib
-
-#         COMMAND ${CMAKE_COMMAND} -E copy
-#             ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/x64/bin/openxr_loader.dll
-#             ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/openxr_loader.dll
-	
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/src/shaders/vert-vismask.glsl
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/shaders/vert-vismask.glsl
-
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/src/shaders/frag-vismask.glsl
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/shaders/frag-vismask.glsl
-
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/src/shaders/vert-lit.glsl
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/shaders/vert-lit.glsl
-
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/src/shaders/frag-lit.glsl
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/shaders/frag-lit.glsl
-         
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/src/shaders/vert-unlit.glsl
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/shaders/vert-unlit.glsl
-
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/src/shaders/frag-unlit.glsl
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/shaders/frag-unlit.glsl
-
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/src/shaders/vert-textured.glsl
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/shaders/vert-textured.glsl
-
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/src/shaders/frag-textured.glsl
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/shaders/frag-textured.glsl
-
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/img/t_bellevue_valve.png
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/img/t_bellevue_valve.png
-
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/img/t_hobart_mein_heim.png
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/img/t_hobart_mein_heim.png
-            
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/img/t_hobart_mein_kochen.png
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/img/t_hobart_mein_kochen.png
-
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/img/t_hobart_rose.png
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/img/t_hobart_rose.png
-
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/img/t_hobart_sunset.png
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/img/t_hobart_sunset.png
-            
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/img/t_munich_mein_schatz.png
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/img/t_munich_mein_schatz.png
-
-        # COMMAND ${CMAKE_COMMAND} -E copy
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/img/t_munich_mein_schatz.png
-        #     ${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/img/t_munich_mein_schatz.png
-
-		# )
-
-
+target_include_directories(${PROJECT_NAME}_node PRIVATE ${THIRD_PARTY_INCLUDES})
+target_compile_options(${PROJECT_NAME}_node PRIVATE ${QT_COMPILE_FLAGS})
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)

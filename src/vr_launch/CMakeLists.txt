@@ -17,7 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 catkin_package(
-  CATKIN_DEPENDS rospy vr final point_recorder
+  CATKIN_DEPENDS rospy vr final point_recorder std_msgs
 )
 
 install(DIRECTORY launch
