@@ -59,7 +59,7 @@ HMD::HMD(int arc, char *arv[])
     qpos_FE = {0.0,0.0,0.0,0.0};
     qpos_AA = {0.0,0.0,0.0,0.0};
     gamma = 0.1;
-    fingernum = 4;
+    fingernum_ = 4;
     m_Index_ik = {-M_PI/36,-M_PI/36,-M_PI/44};
     
     qpos.data.resize(8);
@@ -103,7 +103,7 @@ int HMD::init()
     tf_broadcaster = new tf2_ros::TransformBroadcaster();
 
     // pose_array.poses.resize(specific_indices.size()*2);
-    pose_array.poses.resize(specific_indices.size());
+    pose_array.poses.resize(kSpecificIndices.size());
     start_time = ros::Time::now();
 
     

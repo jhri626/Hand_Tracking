@@ -8,6 +8,7 @@
 #include <ceres/ceres.h>
 #include <ceres/loss_function.h>
 #include <lie_utils.h>
+#include"utils.h"
 
 
 namespace ik {
@@ -15,16 +16,8 @@ namespace ik {
                    const geometry_msgs::Pose& pose_target, double L1, double L2, double theta_init_x, double theta_init_y)
     {
         // 1) Convert poses to Eigen
-        Eigen::Quaterniond q_tgt(
-            pose_target.orientation.w,
-            pose_target.orientation.x,
-            pose_target.orientation.y,
-            pose_target.orientation.z);
-
-        Eigen::Vector3d p_tgt(
-            pose_target.position.x,
-            pose_target.position.y,
-            pose_target.position.z);
+        Eigen::Quaterniond q_tgt = getQuaternionfromPose(pose_target);
+        Eigen::Vector3d p_tgt = getPositionfromPose(pose_target);
 
         // 2) Compute relative SE(3) and extract translation
         Eigen::Matrix4d T_rel = mr::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
@@ -36,9 +29,7 @@ namespace ik {
           // initial guess
 
         ceres::Problem problem;
-                double theta[2];
-        theta[0] = std::max(0.0, std::min(theta_init_x, M_PI));
-        theta[1] = std::max(0.0, std::min(theta_init_y, M_PI)); 
+        double theta[2];
 
             auto* cost_function =
         new ceres::AutoDiffCostFunction<thumbIKCostFunctor, 4, 2>(
@@ -93,7 +84,6 @@ namespace ik {
 
 
         pub.publish(vectorToArrowMarker(p_ref,proxi,"hmd_frame","v1",3,1,0,0));
-            // std::cout<<"p_ref"<<p_ref<<std::endl;
         pub.publish(vectorToArrowMarker(p_ref+proxi,newproxi-proxi,"hmd_frame","v1",4,0,1,0));
 
         return Eigen::Vector2d(theta[0], theta[1]);
@@ -106,22 +96,13 @@ namespace ik {
         const geometry_msgs::Pose& pose_target,double L1, double L2, double theta_init_1,double theta_init_2, double theta_init_3, const std::string& mode)
         {
                 // 1) Convert poses to Eigen
-            Eigen::Quaterniond q_tgt(
-                pose_target.orientation.w,
-                pose_target.orientation.x,
-                pose_target.orientation.y,
-                pose_target.orientation.z);
-
-            Eigen::Vector3d p_tgt(
-                pose_target.position.x,
-                pose_target.position.y,
-                pose_target.position.z);
-
+            Eigen::Quaterniond q_tgt = getQuaternionfromPose(pose_target);
+            Eigen::Vector3d p_tgt = getPositionfromPose(pose_target);
+            
             // 2) Compute relative SE(3) and extract translation
             Eigen::Matrix4d T_rel = mr::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
             Eigen::Vector3d target_pos = T_rel.block<3,1>(0,3);
-            // std::cout<< "L1 :"<<L1<<", L2 : "<<L2<<std::endl;
-            // std::cout<< "Target :"<<target_pos<<std::endl;
+            
 
             ceres::Problem problem;
             double theta[3] = {theta_init_1,theta_init_2,theta_init_3};
@@ -155,10 +136,6 @@ namespace ik {
                 problem.SetParameterLowerBound(theta, 2, -M_PI/4);
                 problem.SetParameterUpperBound(theta, 2,  M_PI/4);
             }
-            // problem.SetParameterLowerBound(theta, 1, 0);
-            // problem.SetParameterUpperBound(theta, 1,  2 * M_PI/3);
-            // problem.SetParameterLowerBound(theta, 2, -M_PI/4);
-            // problem.SetParameterUpperBound(theta, 2,  M_PI/4);
         
             ceres::Solver::Options options;
             options.linear_solver_type = ceres::DENSE_QR;
@@ -168,10 +145,6 @@ namespace ik {
     
             ceres::Solver::Summary summary;
             ceres::Solve(options, &problem, &summary);
-            
-            // std::cout<< "theta 0 :"<<theta[0]<<", theta 1 : "<< theta[1] <<", theta 2 : "<< theta[2]<<std::endl;
-            
-            
     
             // --- Build homogeneous transform T1: rotation about Z by theta2 ---
             Eigen::Matrix4d T1;
@@ -209,11 +182,6 @@ namespace ik {
     
             // --- Compute world position by chaining transforms ---
             Eigen::Vector4d p_world = T1 * (T2 * (T3 * p_local));
-            // std::cout<<"ik pos"<< p_world.block<3,1>(0,0) <<std::endl;
-            // double residual_x = target_pos[0]-p_world[0];
-            // double residual_y = target_pos[1]-p_world[1];
-            // double residual_z = target_pos[2]-p_world[2];
-            // std::cout<<"residial x:"<<residual_x*residual_x<<"residial y:"<<residual_y*residual_y<<"residial z:"<<residual_z*residual_z<<std::endl;
     
             
             Eigen::Vector3d new_proxi = q_ref.toRotationMatrix() * p_world.block<3,1>(0,0);
@@ -222,17 +190,13 @@ namespace ik {
             Eigen::Vector3d z(0,0,1);
             Eigen::Vector3d proxi = -L1 * z;
             proxi = q_ref.toRotationMatrix() * mr::MatrixExp3(mr::VecToso3(y*theta[2])) * mr::MatrixExp3(mr::VecToso3(-x*theta[0])) * proxi;
-            // proxi = q_ref.toRotationMatrix() * lie_utils::Matexp3(lie_utils::vecToso3(y),theta[2]) * lie_utils::Matexp3(lie_utils::vecToso3(-x),0) * proxi;
-            // Eigen::Vector3d proxi_2 = lie_utils::Matexp3(lie_utils::vecToso3(y),0) * lie_utils::Matexp3(lie_utils::vecToso3(-x),0) * proxi;
-    
-            // std::cout<<L2<<" "<<(new_proxi-proxi).norm()<<std::endl;
+
             pub.publish(vectorToArrowMarker(p_ref,proxi,"hmd_frame","v1",3,1,0,0));
-            // std::cout<<"p_ref"<<p_ref<<std::endl;
             pub.publish(vectorToArrowMarker(p_ref+proxi,new_proxi-proxi,"hmd_frame","v1",4,0,1,0));
             // pub.publish(vectorToArrowMarker(p_ref,proxi_2,"hmd_frame","v1",5,0,0,1));
             return Eigen::Vector3d(theta[0] , theta[1], theta[2]);
         }
-        // std::cout<<"work?"<<std::endl;e
+        
 
         // 4) Return optimized angles
 
@@ -243,27 +207,10 @@ namespace ik {
                 const geometry_msgs::Pose& pose_target, double d_pre, double AA, int idx)
         {
                 // 1) Convert poses to Eigen
-            Eigen::Quaterniond q_tgt(
-                pose_target.orientation.w,
-                pose_target.orientation.x,
-                pose_target.orientation.y,
-                pose_target.orientation.z);
-
-            Eigen::Vector3d p_tgt(
-                pose_target.position.x,
-                pose_target.position.y,
-                pose_target.position.z);
-            
-            Eigen::Quaterniond q_inter(
-                pose_inter.orientation.w,
-                pose_inter.orientation.x,
-                pose_inter.orientation.y,
-                pose_inter.orientation.z);
-
-            Eigen::Vector3d p_inter(
-                pose_inter.position.x,
-                pose_inter.position.y,
-                pose_inter.position.z);
+            Eigen::Quaterniond q_tgt = getQuaternionfromPose(pose_target);
+            Eigen::Vector3d p_tgt = getPositionfromPose(pose_target);
+            Eigen::Quaterniond q_inter = getQuaternionfromPose(pose_inter);
+            Eigen::Vector3d p_inter = getPositionfromPose(pose_inter);
 
             // 2) Compute relative SE(3) and extract translation
             Eigen::Matrix4d T_rel = mr::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
@@ -271,9 +218,7 @@ namespace ik {
             double alpha = 1.2;
             Eigen::Vector3d target_pos = alpha * T_rel.block<3,1>(0,3) * 1000 ;
             Eigen::Vector3d inter_pos = alpha * T_rel.block<3,1>(0,3) * 1000 ;
-            // std::cout<< "L1 :"<<L1<<", L2 : "<<L2<<std::endl;
-            // std::cout<< "Target :"<<target_pos<<std::endl;
-            
+
             double theta[2] = {d_pre,AA};
             // double theta[2] = {22.4,0.0};
             ceres::Problem problem;
