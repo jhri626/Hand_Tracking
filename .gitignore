@@ -17,4 +17,5 @@ others/
 *.zip
 *.pkl
 *.bag
-model/plot.ipynb
+model/plot.
+*.png

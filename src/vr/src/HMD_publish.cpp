@@ -2,7 +2,7 @@
 // handles frame waiting, beginning, hand joint location updates, and frame submission.
 #define XR_KHR_composition_layer_color
 #include <windows.h>
-#include<glad/glad.h>
+#include <glad/glad.h>
 #include <openxr/openxr.h>
 #include <chrono>
 #include <vector>
@@ -105,7 +105,7 @@ void HMD::updatePoseArray(const ros::Time& stamp) {
         auto leftLoc  = pXRHandTracking->GetHandJointLocations(XR_HAND_LEFT_EXT)->jointLocations[jointIdx];
         auto rightLoc = pXRHandTracking->GetHandJointLocations(XR_HAND_RIGHT_EXT)->jointLocations[jointIdx];
 
-        std::cout<<pose_array.poses[i]<<std::endl;
+        // std::cout<<pose_array.poses[i]<<std::endl;
         if ((leftLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) &&
             (leftLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
             
@@ -120,7 +120,7 @@ void HMD::updatePoseArray(const ros::Time& stamp) {
             p.orientation.w = leftLoc.pose.orientation.w;
             // pose_array.poses[i] = p;
          
-            std::cout<<pose_array.poses[i]<<std::endl;
+            // std::cout<<pose_array.poses[i]<<std::endl;
         }
 
         if ((rightLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) &&
@@ -153,7 +153,7 @@ Eigen::Vector2d HMD::computeThumbAngles(
     Eigen::Vector2d angles = ik::inversekinematics(
         marker_pub, newaxis, p_wrist,
         poses.poses[XR_HAND_JOINT_THUMB_TIP_EXT],
-        L1, L2, FE_joint[0], AA_joint[0]
+        L1, L2, FE_joint[0] * M_PI/180, AA_joint[0] * M_PI/180
     );
     // exponential smoothing
     FE_joint[0] = (1 - smoothing_gamma) * FE_joint[0] + smoothing_gamma * angles.x() * 180/M_PI;
@@ -175,11 +175,13 @@ Eigen::Vector2d HMD::computeFingerAngles(
                                          poses.poses[1+5*idx],
                                          poses.poses[2+5*idx],
                                          poses.poses[3+5*idx]);
-    double AA = std::isnan(euler.y) ? 0.0 : angles.y();
+    // double AA = std::isnan(euler.y) ? 0.0 : angles.y();
+    double AA = std::isnan(euler.y) ? 0.0 : euler.y * 180.0 / M_PI;
     double FE = std::isnan(euler.x) ? 0.0 : euler.x * 180.0 / M_PI;
     // smoothing
     AA_joint[idx] = (1 - smoothing_gamma) * AA_joint[idx] + smoothing_gamma * AA;
     FE_joint[idx] = (1 - smoothing_gamma) * FE_joint[idx] + smoothing_gamma * FE;
+    // std::cout <<"idx : "<< idx <<" , euler : "<< euler.y  << ", angle : "<< angles.y() * M_PI / 180 << std::endl;
     return { AA_joint[idx], FE_joint[idx] };
 }
 
@@ -370,16 +372,16 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     
     std_msgs::Header header;
     header.stamp = stamp;
-    // qpos.header = header;
+    qpos.header = header;
 
-    for (int idx = 0; i < 4; i++)
+    for (int idx = 0; idx < 4; idx++)
     {
 
-        double& current_FE = qpos_FE[i];
-        double& current_AA = qpos_AA[i];
+        double& current_FE = qpos_FE[idx];
+        double& current_AA = qpos_AA[idx];
 
         Eigen::Vector2d& theta_est = ik::Anyteleopmethod(
-        local_frame_array[i], root_array[i], inter_array[i], tip_array[i],
+        local_frame_array[idx], root_array[idx], inter_array[idx], tip_array[idx],
         current_FE, current_AA, idx
         );
 
@@ -401,12 +403,23 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
         current_AA += AA_delta;
 
         // Write back to qpos structure
-        qpos.data[i]     = current_AA;
-        qpos.data[i + 4] = current_FE;
+        qpos.data[idx]     = current_AA;
+        qpos.data[idx + 4] = current_FE;
 
     };
-    
+    qpos.data[8] = euler.x;
+    qpos.data[9] = euler.y;
+    qpos.data[10] = euler.z;
+
     qpos_pub.publish(qpos);
+    
+    for (size_t i = 0; i < qpos.data.size(); ++i) {
+    float degree = qpos.data[i] * 180.0f / M_PI;
+    std::cout << ", " << degree ;
+    }
+    std::cout << std::endl;
+
+
     // TODO: add node for Anytelop method
     // we should apply ema and clipping to this method too
 
