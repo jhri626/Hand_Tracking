@@ -58,7 +58,7 @@ public:
     bool waitAndBeginFrame(XrFrameState& outState);
     void publishHMDPose(const ros::Time& stamp);
     void locateHandJoints();
-    void updatePoseArray(const ros::Time& stamp);
+    bool updatePoseArray(const ros::Time& stamp);
     void computeJointAngles(const ros::Time& stamp);
     void renderAndSubmitFrame(const XrFrameState& frameState);
     void imageCallback(const sensor_msgs::ImageConstPtr& msg);
@@ -76,6 +76,10 @@ public:
         int idx,
         const Eigen::Vector3d& y_axis,
         double smoothing_gamma
+    );
+
+    void HMD::leftHandToRightHand(
+    geometry_msgs::PoseArray& poses
     );
     //debug    
     
@@ -146,8 +150,8 @@ private:
     Eigen::Vector3d temp;
     Eigen::Vector3d m_Index_ik;
 
-    int32_t mainWidth;
-    int32_t mainHeight;
+    int32_t mainWidth{0};
+    int32_t mainHeight{0};
     std::array<int32_t, kSmallCount> smallWidth{};
     std::array<int32_t, kSmallCount> smallHeight{};
 

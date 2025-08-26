@@ -20,7 +20,7 @@ from scipy.signal import butter, lfilter, lfilter_zi
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/euler_epoch1000_ver9.npz'
+MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/best_val_loss_final.npz'
 
 NUM_JOINTS = 20
 NUM_BONES  = 19
@@ -187,11 +187,12 @@ class InferenceNode(object):
         
         # Exponential Moving Average parameters
         # smoothing factor alpha: higher -> output tracks new values more closely
-        self.ema_alpha = 0.5
+        self.ema_alpha = 0.1
         self.ema       = None  # stores previous EMA value, shape (1,8)
 
         # ROS I/O
         self.pub = rospy.Publisher(OUTPUT_TOPIC, Float32MultiArray, queue_size=1)
+        self.pub_data = rospy.Publisher('/model_out_data', Float32MultiArray, queue_size=1)
         rospy.Subscriber(INPUT_TOPIC, HandSyncData, self.callback)
         rospy.loginfo('Node ready - waiting for %s', INPUT_TOPIC)
 
@@ -248,8 +249,11 @@ class InferenceNode(object):
 
             final_out = np.array(msg.angles[:-3], dtype=np.float32).reshape(8)
             final_out[1:4] = self.ema
-    
+
+            # print(final_out.shape,extra.shape)
+            data_out = np.concatenate([final_out, extra.squeeze()], axis=0)
             self.pub.publish(Float32MultiArray(data=final_out.tolist()))
+            self.pub_data.publish(Float32MultiArray(data=data_out.tolist()))
 
 
         except Exception as e:

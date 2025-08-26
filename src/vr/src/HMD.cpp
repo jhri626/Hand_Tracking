@@ -58,11 +58,11 @@ HMD::HMD(int arc, char *arv[])
     FE_joint = {0.0, 0.0, 0.0, 0.0};
     qpos_FE = {0.0,0.0,0.0,0.0};
     qpos_AA = {0.0,0.0,0.0,0.0};
-    gamma = 0.1;
+    gamma = 0.9;
     fingernum_ = 4;
     m_Index_ik = {-M_PI/36,-M_PI/36,-M_PI/44};
     
-    qpos.data.resize(8);
+    qpos.data.resize(11);
     // qpos.name = {"thumbAA", "indexAA", "middleAA", "ringAA","thumbFE", "indexFE", "middleFE", "ringFE"};
 
 }
@@ -153,5 +153,6 @@ void HMD::rospublish()
     }
     
     delete pXRHandTracking;
+    std::cout<<"break finish"<<std::endl;
     return ;
 }

@@ -391,6 +391,9 @@ bool HMD::InitAllSwapchains() {
         smallHeight[i] = HMDVariable::SWAPCHAIN_HEIGHT;
     }
 
+    std::cerr << "[init] main=" << mainWidth << "x" << mainHeight << "\n";
+    for (int i = 0; i < kSmallCount; ++i)
+        std::cerr << "[init] small["<<i<<"]="<<smallWidth[i]<<"x"<<smallHeight[i]<<"\n";
 
     std::cout << "InitAllSwapchains: created main + " << kSmallCount << " small swapchains\n";
     return true;
