@@ -24,6 +24,7 @@ Eigen::Vector3d getPositionfromPose(const geometry_msgs::Pose& pose);
 // Extract orientation quaternion from PoseArray at index idx
 Eigen::Quaterniond getQuaternionfromArray(const geometry_msgs::PoseArray& poses, size_t idx);
 Eigen::Quaterniond getQuaternionfromPose(const geometry_msgs::Pose& pose);
+void transformPoseArrayToBase(geometry_msgs::PoseArray& poses);
 
 template <size_t N>
 std::array<geometry_msgs::Pose, N> selectPoses(
@@ -64,3 +65,6 @@ std::array<Eigen::Quaterniond, N> selectQuaternions(
   }
   return out;
 }
+
+
+

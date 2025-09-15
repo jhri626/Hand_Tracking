@@ -19,3 +19,4 @@ others/
 *.bag
 model/plot.ipynb
 *.png
+*.active

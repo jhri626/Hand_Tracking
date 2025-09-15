@@ -107,7 +107,8 @@ bool HMD::updatePoseArray(const ros::Time& stamp) {
         auto rightLoc = pXRHandTracking->GetHandJointLocations(XR_HAND_RIGHT_EXT)->jointLocations[jointIdx];
 
         // std::cout<<pose_array.poses[i]<<std::endl;
-        if ((leftLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) &&
+        // std::cout <<leftLoc.locationFlags<<std::endl;
+        if ((leftLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) ||
             (leftLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
             
             geometry_msgs::Pose p;
@@ -488,12 +489,15 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
 //     // data_index_array.data[4] = AA_index_geo;
 //     // data_index_array.data[5] = AA_index_geo_my;
 //     // data_index_array.data[6] = AA_index_ik;
+    geometry_msgs::PoseArray network_input = pose_array;
+    transformPoseArrayToBase(network_input);
+
 
 
     vr::HandSyncData sync_msg;
     sync_msg.header.stamp = stamp;
     sync_msg.header.frame_id = "hmd_frame";
-    sync_msg.pose_array = pose_array;
+    sync_msg.pose_array = network_input;
     sync_msg.pose_array.header.stamp = stamp;
     sync_msg.pose_array.header.frame_id = "hmd_frame";
     sync_msg.angles = latest_angles;

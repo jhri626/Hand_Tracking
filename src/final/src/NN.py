@@ -20,7 +20,7 @@ from scipy.signal import butter, lfilter, lfilter_zi
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/best_val_loss_final.npz'
+MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/best_val_loss_test4.npz'
 
 NUM_JOINTS = 20
 NUM_BONES  = 19

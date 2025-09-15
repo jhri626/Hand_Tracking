@@ -1,4 +1,5 @@
 #include <Windows.h>
+#include <openxr/openxr.h>
 #include <iostream>
 #include <utils.h>
 #include <conio.h>
@@ -90,3 +91,35 @@ Eigen::Quaterniond getQuaternionfromPose(
 }
 
 
+void transformPoseArrayToBase(geometry_msgs::PoseArray& poses)
+{
+    if (poses.poses.empty()) {
+        return; 
+    }
+
+    
+    Eigen::Quaterniond q = getQuaternionfromArray(poses, XR_HAND_JOINT_PALM_EXT);
+
+    Eigen::Matrix3d R = q.toRotationMatrix();
+
+    
+
+    Eigen::Vector3d t =  getPositionfromArray(poses, XR_HAND_JOINT_PALM_EXT);
+
+    
+    Eigen::Matrix4d T_inv = Eigen::Matrix4d::Identity();
+    T_inv.block<3,3>(0,0) = R.transpose();
+    T_inv.block<3,1>(0,3) = -R.transpose() * t;
+
+    
+    for (size_t i = 1; i < poses.poses.size(); ++i) {
+        geometry_msgs::Pose& p = poses.poses[i];
+
+        Eigen::Vector4d pt(p.position.x, p.position.y, p.position.z, 1.0);
+        Eigen::Vector4d pt_trans = T_inv * pt;
+
+        p.position.x = pt_trans(0);
+        p.position.y = pt_trans(1);
+        p.position.z = pt_trans(2);
+    }
+}

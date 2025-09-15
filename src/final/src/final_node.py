@@ -233,15 +233,20 @@ class Finalnode:
             aa = self.compute_aa(raw_data)
 
             # Apply rate limiting (delta clamp) to FE and AA
-            fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
-            aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
+            # fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
+            # aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
+
+            ############################### temporal for experiment########################
+            fe_adjusted = fe
+            aa_adjusted = aa
+            ###############################################################################
 
             # Update previous state for next iteration
             self.FE_prev = fe_adjusted.copy()
             self.AA_prev = aa_adjusted.copy()
 
             # Apply finger-collision avoidance adjustments to AA
-            aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
+            # aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
             combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
             
         elif self.mode == "base":
@@ -285,7 +290,7 @@ class Finalnode:
                         np.sign(diff) * threshold,
                         diff)
         ratio = (raw[:4] - self.init[:4]) / np.abs(denom)
-        return 0.5 * np.tanh(np.sign(ratio) * ratio**2)
+        return 0.36 * np.sign(ratio) * ratio
 
     @staticmethod
     def apply_delta_clamp(values, prev, max_delta):

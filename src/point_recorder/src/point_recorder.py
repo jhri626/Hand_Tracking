@@ -66,11 +66,12 @@ class PointRecorder:
         rate = rospy.Rate(self.sample_rate_hz)
 
         rospy.loginfo("Collecting %d samples at %d Hz.", self.sample_count, self.sample_rate_hz)
-        while len(samples) < self.sample_count and not rospy.is_shutdown():
-            if self.latest_angles:
-                samples.append(self.latest_angles[:])
-                rospy.logdebug("Sample %d: %s", len(samples), self.latest_angles)
-            rate.sleep()
+        samples = []
+        for i in range(self.sample_count):
+            msg = rospy.wait_for_message(self.topic_name, Float32MultiArray, timeout=1.0)
+            samples.append(list(msg.data))
+            rospy.logdebug("Sample %d: %s", i+1, msg.data)
+
 
         if not samples:
             return TriggerResponse(success=False, message="Failed to collect any samples.")

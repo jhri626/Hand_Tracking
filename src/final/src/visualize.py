@@ -10,9 +10,9 @@ time_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
 
 # Two data buffers for the two array elements
 data1_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
-data2_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
-data3_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
-data4_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
+# data2_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
+# data3_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
+# data4_buffer = deque([0.0] * buffer_size, maxlen=buffer_size)
 
 start_time = None
 
@@ -28,15 +28,17 @@ def topic_callback(msg):
     t = rospy.get_time() - start_time
 
     # Extract first two elements, defaulting to 0.0 if not present
-    data1 = -msg.data[0] if len(msg.data) > 0 else 0.0
-    data2 = msg.data[1] if len(msg.data) > 1 else 0.0
-    data3 = msg.data[2] if len(msg.data) > 2 else 0.0
+    data1 = msg.data[-1] if len(msg.data) > 0 else 0.0
+    
+    # data2 = msg.data[1] if len(msg.data) > 1 else 0.0
+    # data3 = msg.data[2] if len(msg.data) > 2 else 0.0
     # data4 = msg.data[6] if len(msg.data) > 3 else 0.0
 
     time_buffer.append(t)
     data1_buffer.append(data1)
-    data2_buffer.append(data2)
-    data3_buffer.append(data3)
+    # print(data1_buffer)
+    # data2_buffer.append(data2)
+    # data3_buffer.append(data3)
     # data4_buffer.append(data4)
 
 if __name__ == '__main__':
@@ -44,21 +46,23 @@ if __name__ == '__main__':
     rospy.init_node('realtime_two_element_plot')
 
     # 3. Subscribe to the Float32MultiArray topic
-    topic_name = '/data_index'  # Replace with your actual topic
+    topic_name = '/baseline'  # Replace with your actual topic
     rospy.Subscriber(topic_name, Float32MultiArray, topic_callback)
 
     # 4. Set up Matplotlib in interactive mode
     plt.ion()
     fig, ax = plt.subplots()
     line1, = ax.plot([], [], lw=2, label='euler')
-    line2, = ax.plot([], [], lw=2, linestyle='--', label='geo')
-    line3, = ax.plot([], [], lw=2, linestyle='--', label='geo')
+    # line2, = ax.plot([], [], lw=2, linestyle='--', label='geo')
+    # line3, = ax.plot([], [], lw=2, linestyle='--', label='geo')
     # line4, = ax.plot([], [], lw=2, linestyle='--', label='ik')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Value')
     ax.set_title('Real-time plot index joint angle')
     ax.legend(loc='upper right')
-    ax.set_ylim(-180, 180)  # Adjust based on data range
+    ax.set_ylim(-4, 4)  # Adjust based on data range
+
+    ax.axhline(y=0, color='gray', linestyle='--', linewidth=1)
 
     # 5. Main loop: update plot at 10 Hz
     rate = rospy.Rate(10)  # 10 Hz
@@ -67,8 +71,8 @@ if __name__ == '__main__':
         if time_buffer:
             # Update each line with its buffer
             line1.set_data(time_buffer, data1_buffer)
-            line2.set_data(time_buffer, data2_buffer)
-            line3.set_data(time_buffer, data3_buffer)
+            # line2.set_data(time_buffer, data2_buffer)
+            # line3.set_data(time_buffer, data3_buffer)
             # line4.set_data(time_buffer, data4_buffer)
             # Adjust x-axis to show only the current window
             time_padding = 2
