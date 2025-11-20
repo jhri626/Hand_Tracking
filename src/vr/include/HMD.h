@@ -1,17 +1,27 @@
 #pragma once
 #define XR_USE_GRAPHICS_API_OPENGL
+#define XR_USE_PLATFORM_WIN32
+
 #include <Windows.h>
-#include <vector>
-#include <memory>
+#include <glad/glad.h>
 #include <GL/gl.h>
-#include <thread>
+#include <vulkan/vulkan.h>
+#include <unknwn.h>
+
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
+
+
+#include <vector>
+#include <future>
+#include <memory>
+#include <thread>
+
+#include <OpenXRProvider.h>
 #include <cv_bridge/cv_bridge.h>
-#include <spdlog/spdlog.h>
+// #include <spdlog/spdlog.h>
 #include <ros/ros.h>
 #include <std_msgs/Header.h>
-#include <OpenXRProvider.h>
 #include <geometry_msgs/PoseArray.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <std_msgs/Float32MultiArray.h>
@@ -63,6 +73,11 @@ public:
     void renderAndSubmitFrame(const XrFrameState& frameState);
     void imageCallback(const sensor_msgs::ImageConstPtr& msg);
     void currentCallback(const std_msgs::Float32MultiArray::ConstPtr& msg);
+    bool InitTrackerActions();
+    bool BindTrackerAction();
+    bool CreateTrackerSpaces();
+
+
 
     Eigen::Vector2d computeThumbAngles(
         const geometry_msgs::PoseArray& poses,
@@ -78,14 +93,19 @@ public:
         double smoothing_gamma
     );
 
-    void HMD::leftHandToRightHand(
+    void leftHandToRightHand(
     geometry_msgs::PoseArray& poses
     );
+
+    void UpdateAllTrackers();
     //debug    
     
 
 private:
     // Window + GL context
+
+    PFN_xrEnumerateViveTrackerPathsHTCX pfnEnumerateViveTrackerPathsHTCX = nullptr;
+
     HWND                              hWnd{ nullptr };
     HDC                               hDC{ nullptr };
     HGLRC                             hGLRC{ nullptr };
@@ -107,6 +127,31 @@ private:
     // Hand tracking
     OpenXRProvider::XRExtHandTracking* pXRHandTracking{ nullptr };
     bool                              bDrawHandJoints{ false };
+
+    // Multiple tracker support
+    static const int MAX_TRACKERS = 2;
+
+    // Paths for each tracker role
+    std::vector<std::string> trackerRoleStrings = {
+        // "/user/vive_tracker_htcx/role/chest",
+        "/user/vive_tracker_htcx/role/left_foot",
+        "/user/vive_tracker_htcx/role/right_foot",
+        // "/user/vive_tracker_htcx/role/left_shoulder",
+        // "/user/vive_tracker_htcx/role/right_shoulder",
+        // "/user/vive_tracker_htcx/role/waist",
+        // "/user/vive_tracker_htcx/role/left_knee",
+        // "/user/vive_tracker_htcx/role/right_knee"
+    };
+
+    XrPath trackerPaths[MAX_TRACKERS];
+    XrSpace trackerSpaces[MAX_TRACKERS];
+    int trackerCount = 0;
+
+    // Shared ActionSet and Action
+    XrActionSet trackerActionSet = XR_NULL_HANDLE;
+    XrAction trackerPoseAction   = XR_NULL_HANDLE;
+
+
 
     // Logging
     std::shared_ptr<spdlog::logger>    pLogger{ spdlog::default_logger() };
@@ -136,6 +181,7 @@ private:
     ros::Publisher                     rviz_pub;
     ros::Publisher                     data_pub;
     ros::Publisher                     qpos_pub;
+    ros::Publisher                     tracker_pose_pub;
 
     // joint
     std::array<double, 5> AA_joint;
@@ -156,5 +202,8 @@ private:
     std::array<int32_t, kSmallCount> smallHeight{};
 
     std::array<float, 4> current{};
+
+
+    
 
 };

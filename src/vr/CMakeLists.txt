@@ -14,6 +14,7 @@ add_compile_definitions(
   GLOG_NO_ABBREVIATED_SEVERITIES
   _SILENCE_CXX17_NEGATORS_DEPRECATION_WARNING
   _SILENCE_CXX17_OLD_ALLOCATOR_MEMBERS_DEPRECATION_WARNING
+  # XR_USE_GRAPHICS_API_VULKAN
 )
 
 # ROS & Message Configuration
@@ -25,6 +26,7 @@ add_message_files(
     HandSyncData.msg
     JointState.msg
 )
+
 generate_messages(DEPENDENCIES std_msgs geometry_msgs)
 catkin_package(CATKIN_DEPENDS roscpp std_msgs geometry_msgs message_runtime)
 include_directories(${catkin_INCLUDE_DIRS})
@@ -34,6 +36,13 @@ find_package(OpenCV REQUIRED NO_MODULE PATHS "C:/Users/dyros/cv/opencv-3.4.13/bu
 find_package(Ceres REQUIRED)
 find_package(gflags REQUIRED)
 find_package(glog REQUIRED)
+
+set(Vulkan_INCLUDE_DIR "C:/VulkanSDK/1.4.328.1/Include")
+set(Vulkan_LIBRARY "C:/VulkanSDK/1.4.328.1/Lib/vulkan-1.lib")
+
+include_directories(${Vulkan_INCLUDE_DIR})
+link_libraries(${Vulkan_LIBRARY})
+
 
 # Qt Module Configuration
 set(QT_MODULES Core Gui Widgets)
@@ -63,10 +72,14 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider/Sandbox/third_party/glad/src/glad.c
 )
 set(THIRD_PARTY_INCLUDES
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider2/openxr_provider/include
+  # ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider2/openxr_provider/include/extensions
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider2/openxr_provider/
+  # ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/include
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider/OpenXRProvider/third_party/
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider/OpenXRProvider/include
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/OpenXRProvider/Sandbox/third_party/glad/include
+  
   ${CERES_INCLUDE_DIRS}
   ${GFLAGS_INCLUDE_DIRS}
   ${GLOG_INCLUDE_DIRS}
@@ -91,8 +104,12 @@ target_link_libraries(${PROJECT_NAME}_node
   ${GFLAGS_LIBRARIES}
   ${GLOG_LIBRARIES}
   "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/x64/lib/openxr_loader.lib"
+  "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider2/openxr_provider/third_party/openxr/build/src/loader/Release/openxr_loader.lib"
+  "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider2/openxr_provider/lib/openxr_provider.lib"
   "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/bin/OpenXRProvider.lib"
-  "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glfw/lib/glfw3.lib"
+  # "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider/Sandbox/third_party/glfw/lib/glfw3.lib"
+  # "${CMAKE_SOURCE_DIR}/vr/third_party/OpenXRProvider2/bin_prebuilt/openxr_provider/openxr_provider.lib"
+  
   opengl32.lib
 )
 

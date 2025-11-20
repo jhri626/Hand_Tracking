@@ -23,6 +23,8 @@ void HMD::processFrameIteration() {
         return;
     }
 
+    UpdateAllTrackers();
+
     ros::Time now = ros::Time::now();
     publishHMDPose(now);
     locateHandJoints();
@@ -300,115 +302,10 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     latest_angles[2*fingernum_ + 1] = euler.y;
     latest_angles[2*fingernum_ + 2] = euler.z;
 
-//     // /*
-//     // Index data FE
-//     // */
-//     // Eigen::Vector3d z(0,0,1);
-//     // //euler
-//     // geometry_msgs::Vector3 euler_index = pose_utils::poseToEulerAngles(pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT], pose_array.poses[XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT]);
-//     // double FE_index_euler = euler_index.x *180/M_PI;
-    
-//     // // geo
-    
-//     // Eigen::Vector3d VM   = getPositionfromArray(pose_array, XR_HAND_JOINT_RING_METACARPAL_EXT);
-//     // Eigen::Vector3d MCP2 = getPositionfromArray(pose_array, XR_HAND_JOINT_INDEX_PROXIMAL_EXT);
-//     // Eigen::Vector3d MCP3 = getPositionfromArray(pose_array, XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT);
-//     // Eigen::Vector3d PIP2 = getPositionfromArray(pose_array, XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT);
-//     // Eigen::Vector3d DIP2 = getPositionfromArray(pose_array, XR_HAND_JOINT_INDEX_DISTAL_EXT);
-
-//     // Eigen::Vector3d v1 = MCP2 - VM; // HP index metacarpal phalanx
-//     // Eigen::Vector3d v2 = MCP3 - VM; // HP middle metacarpal phalanx
-//     // Eigen::Vector3d v3 = MCP3 - MCP2; // HP index MCP to middle MCP 
-//     // Eigen::Vector3d v4 = PIP2 - MCP2; // P_proxi index proximal phalanx
-//     // Eigen::Vector3d v5 = DIP2 - PIP2; // P_med index middle phalanx
-
-//     // Eigen::Vector3d n1 = v2.cross(v1).normalized(); // normal vector for HP
-//     // Eigen::Vector3d n2 = v3.cross(v4).normalized(); // normal vector for P_proxi
-//     // Eigen::Vector3d n3 = v3.cross(v5).normalized(); // normal vector for P_med
-    
-//     // double MCP = ((n1.cross(n2)).dot(mat.col(0)) <= 0) ? pose_utils::computeAngle(n1,n2) : -pose_utils::computeAngle(n1,n2);
-//     // double PIP = ((n2.cross(n3)).dot(mat.col(0)) <= 0) ? pose_utils::computeAngle(n2,n3) : -pose_utils::computeAngle(n2,n3);
-//     // double FE_index_geo = MCP + PIP;
-
-//     // // ik
-    
-//     // Eigen::Quaterniond MCP2_ori= getQuaternionfromArray(pose_array, XR_HAND_JOINT_INDEX_METACARPAL_EXT);
-    
-//     // // std::cout<<"temp :"<<temp<<std::endl;
-//     // Eigen::Vector3d MCP2_avg = (MCP2);
-//     // // std::cout<<"MCP2"<<MCP2<<std::endl;
-//     // m_Index_ik =ik::inversekinematicsIndex(marker_pub, MCP2_ori, MCP2_avg , pose_array.poses[XR_HAND_JOINT_INDEX_DISTAL_EXT], 
-//     //     v4.norm(),  v5.norm(), m_Index_ik[0], m_Index_ik[1],m_Index_ik[2], "index");
-
-//     // double FE_index_ik = (m_Index_ik[0] + m_Index_ik[1]) * 180 / M_PI;
-
-//     // /*
-//     // Index data AA
-//     // */
-
-//     // //euler
-//     // double AA_index_euler = euler_index.y * 180/M_PI;
-
-//     // // std::cout<<"euler index AA:"<<AA_index_euler<<std::endl;
-//     // // std::cout<<"IK index AA:"<<m_Index_ik[2] * 180 / M_PI<<std::endl;
-
-//     // // geo
-//     // Eigen::Vector2d geo_index_my_method = pose_utils::jointAngle(marker_pub,y_axis,pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT],pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT],pose_array.poses[XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT]);    
-//     // Eigen::Vector2d geo_index = pose_utils::jointAngle(marker_pub,n1,pose_array.poses[XR_HAND_JOINT_INDEX_METACARPAL_EXT],pose_array.poses[XR_HAND_JOINT_INDEX_PROXIMAL_EXT],pose_array.poses[XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT]);    
-
-//     // double AA_index_geo_my = geo_index_my_method.y();
-//     // double AA_index_geo = geo_index.y();
-
-//     // // ik
-//     // double AA_index_ik = m_Index_ik[2] * 180 / M_PI ;
-
-//     // /*
-//     // Thumb data FE
-//     // */
-
-//     // //euler
-//     // geometry_msgs::Vector3 euler_thumb = pose_utils::poseToEulerAngles(pose_array.poses[XR_HAND_JOINT_WRIST_EXT], pose_array.poses[XR_HAND_JOINT_THUMB_DISTAL_EXT]);
-//     // double FE_thumb_euler = euler_thumb.x * 180 / M_PI;
-
-//     // //geo use CMC1 MCP1 MCP2
-    
-//     // Eigen::Vector3d MCP1 = getPositionfromArray(pose_array, XR_HAND_JOINT_THUMB_PROXIMAL_EXT);
-//     // Eigen::Vector3d CMC1 = getPositionfromArray(pose_array, XR_HAND_JOINT_THUMB_METACARPAL_EXT);
-//     // Eigen::Vector3d PIP1 = getPositionfromArray(pose_array, XR_HAND_JOINT_THUMB_DISTAL_EXT);
 
 
-//     // Eigen::Vector3d v6 = MCP1 - CMC1; // TM to thumb MCP
-//     // Eigen::Vector3d v7 = MCP2 - CMC1; // TM to index MCP
 
-//     // Eigen::Vector3d v8 = MCP2 - MCP1; // thumb MCP to index MCP
-//     // Eigen::Vector3d v9 = PIP1 - MCP1; // thumb MCP to MCP
-
-//     // Eigen::Vector3d n4 = v7.cross(v6).normalized();
-//     // Eigen::Vector3d n5 = v8.cross(v9).normalized();
-
-//     // double FE_thumb_geo = ((n4.cross(n5)).dot(mat.col(0)) <= 0) ? pose_utils::computeAngle(n4,n5) : - pose_utils::computeAngle(n4,n5);
-
-//     // // marker_pub.publish(vectorToArrowMarker(MCP1,n4,"world","v1",1,1,0,0));
-//     // // marker_pub.publish(vectorToArrowMarker(PIP1,n5,"world","v2",2,0,1,0));
-//     // // marker_pub.publish(vectorToArrowMarker(MCP1,v8,"world","v3",3,0,0,1));
-//     // // marker_pub.publish(vectorToArrowMarker(MCP1,v9,"world","v4",4,1,1,0));
-
-
-//     // // ik
-
-//     // double FE_thumb_ik = angle.x() * 180.0 / M_PI;
-
-//     // /*
-//     // Thumb data AA
-//     // */
-
-//     // //euler
-//     // double AA_thumb_euler = euler_thumb.y * 180/M_PI;
-
-//     // //ik
-//     // double AA_thumb_ik = angle.y() * 180.0 / M_PI;
-
-
+/*
     // //qpos Anytelop
 
     auto tip_array = selectPoses(pose_array, kTipIndices);
@@ -464,31 +361,8 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     qpos.data[10] = euler.z;
 
     qpos_pub.publish(qpos);
-    
-//     for (size_t i = 0; i < qpos.data.size(); ++i) {
-//     float degree = qpos.data[i] * 180.0f / M_PI;
-//     std::cout << ", " << degree ;
-//     }
-//     std::cout << std::endl;
+    */
 
-
-//     // TODO: add node for Anytelop method
-//     // we should apply ema and clipping to this method too
-
-    
-    
-//     // std_msgs::Float32MultiArray data_index_array;
-//     // data_index_array.data.resize(7);
-
-    
-    
-//     // data_index_array.data[0] = FE_index_euler;
-//     // data_index_array.data[1] = FE_index_geo;
-//     // data_index_array.data[2] = FE_index_ik;
-//     // data_index_array.data[3] = AA_index_euler;
-//     // data_index_array.data[4] = AA_index_geo;
-//     // data_index_array.data[5] = AA_index_geo_my;
-//     // data_index_array.data[6] = AA_index_ik;
     geometry_msgs::PoseArray network_input = pose_array;
     transformPoseArrayToBase(network_input);
 
@@ -664,4 +538,81 @@ void HMD::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
 void HMD::currentCallback(const std_msgs::Float32MultiArray::ConstPtr& msg){
     std::copy(msg->data.begin() + 4, msg->data.begin() + 8, current.begin());
 }
-    
+
+
+void HMD::UpdateAllTrackers()
+{
+    // 1) Sync actions (MUST be single-threaded)
+    XrActiveActionSet active{};
+    active.actionSet = trackerActionSet;
+
+    XrActionsSyncInfo syncInfo{XR_TYPE_ACTIONS_SYNC_INFO};
+    syncInfo.countActiveActionSets = 1;
+    syncInfo.activeActionSets = &active;
+    xrSyncActions(xrSession, &syncInfo);
+
+    // 2) Prepare PoseArray for ROS publish
+    geometry_msgs::PoseArray trackerArray;
+    trackerArray.header.stamp = ros::Time::now();
+    trackerArray.header.frame_id = "world";
+    trackerArray.poses.resize(trackerCount);
+
+    // std::cerr << "update" << trackerCount ;
+
+    // 3) Vector for jobs
+    std::vector<std::future<void>> jobs;
+    jobs.reserve(trackerCount);
+
+    // 4) Launch parallel jobs
+    for (int i = 0; i < trackerCount; ++i)
+    {
+        jobs.emplace_back(
+            std::async(std::launch::async, [&, i]()
+            {
+                XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
+
+                XrResult res =  xrLocateSpace(trackerSpaces[i],
+                              worldSpace,
+                              xrTime,
+                              &loc);
+                
+            
+                // std::cout << "result" << res <<std::endl;
+                // std::cout << "flag" << loc.locationFlags <<std::endl;
+                // std::cout << "bit" << loc.locationFlags <<std::endl;
+                bool posValid = loc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT;
+                bool oriValid = loc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
+
+                geometry_msgs::Pose p;
+
+                std::cout << "pos :" << posValid <<", ori :"<< oriValid<<std::endl;
+
+                if (posValid && oriValid) {
+                    p.position.x = loc.pose.position.x;
+                    p.position.y = loc.pose.position.y;
+                    p.position.z = loc.pose.position.z;
+
+                    p.orientation.x = loc.pose.orientation.x;
+                    p.orientation.y = loc.pose.orientation.y;
+                    p.orientation.z = loc.pose.orientation.z;
+                    p.orientation.w = loc.pose.orientation.w;
+                } else {
+                    // Invalid → identity pose
+                    p.position.x = p.position.y = p.position.z = 0.0;
+                    p.orientation.x = p.orientation.y = p.orientation.z = 0.0;
+                    p.orientation.w = 1.0;
+                }
+
+                // Write into trackerArray
+                // This write is safe because each thread writes to a unique index
+                trackerArray.poses[i] = p;
+            })
+        );
+    }
+
+    // 5) Wait for all threads to finish
+    for (auto& j : jobs) j.get();
+
+    // 6) Publish once
+    tracker_pose_pub.publish(trackerArray);
+}
