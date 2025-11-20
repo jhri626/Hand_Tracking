@@ -1,7 +1,7 @@
 // #define XR_USE_GRAPHICS_API_OPENGL
 #include <iostream>
 #include <memory>
-#include <spdlog/spdlog.h>
+// #include <spdlog/spdlog.h>
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
 #include <cv_bridge/cv_bridge.h>
@@ -9,12 +9,11 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <std_msgs/Float32MultiArray.h>
 #include <std_msgs/Int8.h>
-#include <OpenXRProvider.h>
+#include "HMD.h"
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 #include <GL/gl.h>
 #include <thread>
-#include "HMD.h"
 #include <mutex>
 
 HMD::HMD(int arc, char *arv[])
@@ -58,7 +57,7 @@ HMD::HMD(int arc, char *arv[])
     FE_joint = {0.0, 0.0, 0.0, 0.0};
     qpos_FE = {0.0,0.0,0.0,0.0};
     qpos_AA = {0.0,0.0,0.0,0.0};
-    gamma = 0.9;
+    gamma = 0.1;
     fingernum_ = 4;
     m_Index_ik = {-M_PI/36,-M_PI/36,-M_PI/44};
     
@@ -91,8 +90,9 @@ int HMD::init()
     // for model
     hand_sync_pub = nh.advertise<vr::HandSyncData>("hand_sync_data", 1);
     rviz_pub = nh.advertise<geometry_msgs::PoseArray>("rviz", 1);
-    data_pub = nh.advertise<std_msgs::Float32MultiArray>("data", 1);
-    qpos_pub = nh.advertise<std_msgs::Float32MultiArray>("/baseline", 1);
+    // data_pub = nh.advertise<std_msgs::Float32MultiArray>("data", 1);
+    // qpos_pub = nh.advertise<std_msgs::Float32MultiArray>("/baseline", 1);
+    tracker_pose_pub = nh.advertise<geometry_msgs::PoseArray>("tracker_pose", 1);
 
     marker_pub = nh.advertise<visualization_msgs::Marker>("visualization_marker", 1); // debug tool
 
@@ -118,7 +118,22 @@ int HMD::init()
         return -1;
     }
 
+    if (!InitTrackerActions()) {
+        std::cerr << "Failed to init tracker actions\n";
+        return -1;
+    }
+    if (!BindTrackerAction()) {
+        std::cerr << "Failed to bind tracker action\n";
+        return -1;
+    }
+
+    if (!CreateTrackerSpaces()) {
+        std::cerr << "Failed to create tracker space\n";
+        return -1;
+    }
+
     pXRHandTracking = new OpenXRProvider::XRExtHandTracking(pLogger);
+    std::cerr << "tracker"<< std::endl;
     try {
         pXRHandTracking->Init(xrInstance, xrSession);
     } catch (const std::exception& e) {
@@ -126,15 +141,27 @@ int HMD::init()
         return -1;
     }
 
+    std::cerr << "tracker init "<< std::endl;
+
+    
+
     if (!beginOpenXRSession()) {
         std::cerr << "Failed to start OpenXR session." << std::endl;
         return -1;
     }
 
+    std::cerr << "session begin"<< std::endl;
+
     if (!InitAllSwapchains()) {
         std::cerr << "Failed to create Swapchain." << std::endl;
         return -1;
     }
+
+    // after beginOpenXRSession()
+    
+
+    
+
 
     return 1;
 }

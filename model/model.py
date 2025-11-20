@@ -29,13 +29,24 @@ class Skeleton2Mesh(nn.Module):
                  gsd_dim=100,
                  mlp_hidden=[256, 256],
                  pe_freqs_bone=5,
-                 pe_freqs_order=2):
+                 pe_freqs_order=2,
+                 use_euler = True,
+                 use_quat = False):
         super().__init__()
         self.num_bones = num_bones
+        self.use_euler = use_euler
+        self.use_quat = use_quat
 
+        if self.use_euler:
+            self.emb_dim = 3
+        elif self.use_quat:
+            self.emb_dim = 4
+        else:
+            self.emb_dim = 3
 
-        self.orientation_embed = nn.Linear(3,3)
+        self.orientation_embed = nn.Linear(self.emb_dim,self.emb_dim)
 
+        
         # self.orientation_embed = nn.Sequential(
         #     nn.Linear(3,12),
         #     nn.GELU(),
@@ -57,8 +68,13 @@ class Skeleton2Mesh(nn.Module):
         self.pe_freqs_bone = pe_freqs_bone
         self.pe_freqs_order = pe_freqs_order
 
-        # 3) Define 4 separate MLP heads
-        in_dim = pe_freqs_bone * 2 * 6 + pe_freqs_order * 2 * num_bones + gsd_dim + 3
+        # 3) Define 4 separate MLP 
+        if self.use_euler:
+            in_dim = pe_freqs_bone * 2 * 6 + pe_freqs_order * 2 * num_bones + gsd_dim + 3
+        elif self.use_quat:
+            in_dim = pe_freqs_bone * 2 * 6 + pe_freqs_order * 2 * num_bones + gsd_dim + 4
+        else:
+            in_dim = pe_freqs_bone * 2 * 6 + pe_freqs_order * 2 * num_bones + gsd_dim
 
         def make_head(out_dim: int) -> nn.Sequential:
             return nn.Sequential(
@@ -80,8 +96,8 @@ class Skeleton2Mesh(nn.Module):
 
     def forward(self, skeletons_data: torch.Tensor) -> torch.Tensor:
         B = skeletons_data.shape[0]
-        orientation = skeletons_data[:,-3:]
-        skeletons_flat = skeletons_data[:,:-3]
+        orientation = skeletons_data[:,-self.emb_dim:]
+        skeletons_flat = skeletons_data[:,:-self.emb_dim]
         # reshape flat input → [B, num_bones, 3]
         skeletons = skeletons_flat.view(B, -1, 3)  
 
@@ -105,7 +121,10 @@ class Skeleton2Mesh(nn.Module):
                   .expand(-1, self.num_bones, -1)
 
         # bone-level feature OE → [B, num_bones, in_dim]
-        OE = torch.cat([pe_bk, pe_ok, g, orientation_embed], dim=-1)
+        if self.use_euler or self.use_quat:
+            OE = torch.cat([pe_bk, pe_ok, g, orientation_embed], dim=-1)
+        else:
+            OE = torch.cat([pe_bk, pe_ok, g], dim=-1)
 
         # 4 heads
         out1 = self.head1(OE)  # [B, num_bones, 3] # index AA

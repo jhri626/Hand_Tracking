@@ -1,16 +1,14 @@
+#define XR_EXTENSION_PROTOTYPES
+#include "HMD.h"
 #include <Windows.h>
-#include <glad/glad.h>    
-#include <GL/gl.h>
-#include <OpenXRProvider.h>  
-#include <openxr/openxr.h>
-#include <openxr/openxr_platform.h>
 #include <iostream>
 #include <cstring>
-#include <spdlog/spdlog.h>
+// #include <spdlog/spdlog.h>
 #include <thread>
 #include "utils.h"
-#include "HMD.h"
 #include "HMD_number.h"
+
+
 
 
 
@@ -92,6 +90,7 @@ bool HMD::initOpenGL() {
 bool HMD::CreateOpenXRInstanceAndSession() {
     // List of required extension names.
     const char* extensionNames[] = {
+        XR_HTCX_VIVE_TRACKER_INTERACTION_EXTENSION_NAME,
         XR_EXT_HAND_TRACKING_EXTENSION_NAME,      // Hand tracking extension
         XR_KHR_OPENGL_ENABLE_EXTENSION_NAME        // OpenGL enable extension
         // XR_KHR_COMPOSITION_LAYER_COLOR_EXTENSION_NAME // for frame debug remove it later
@@ -101,6 +100,8 @@ bool HMD::CreateOpenXRInstanceAndSession() {
         std::cerr << "[error] Failed to load GL functions\n";
         return false;
     }
+
+    std::cerr << "Create session start"<< std::endl;
 
     // Setup the OpenXR instance creation info.
     XrInstanceCreateInfo xrInstanceCreateInfo = { XR_TYPE_INSTANCE_CREATE_INFO };
@@ -118,12 +119,26 @@ bool HMD::CreateOpenXRInstanceAndSession() {
         std::cerr << "Failed to create OpenXR instance." << std::endl;
         return false;
     }
+        std::cerr << "Create instance"<< std::endl;
+
+    xrGetInstanceProcAddr(
+        xrInstance,
+        "xrEnumerateViveTrackerPathsHTCX",
+        (PFN_xrVoidFunction*)&pfnEnumerateViveTrackerPathsHTCX
+    );
+
+    if (!pfnEnumerateViveTrackerPathsHTCX) {
+        std::cerr << "[warn] Vive Tracker extension not supported by this runtime." << std::endl;
+    }
+
 
     // Initialize the OpenXR system.
     if (!initSystem()) {
         std::cerr << "Failed to initialize OpenXR system!" << std::endl;
         return false;
     }
+
+    std::cerr << "init system"<< std::endl;
 
     // Retrieve the function pointer for obtaining OpenGL graphics requirements.
     PFN_xrGetOpenGLGraphicsRequirementsKHR pfn_xrGetOpenGLGraphicsRequirementsKHR = nullptr;
@@ -180,6 +195,8 @@ bool HMD::CreateOpenXRInstanceAndSession() {
         std::cerr << "Failed to create OpenXR session. Error: " << result << std::endl;
         return false;
     }
+
+    std::cerr << "create session"<< std::endl;
     return true;
 }
 
@@ -204,10 +221,17 @@ bool HMD::beginOpenXRSession() {
         std::cerr << "[error] xrInstance is NULL! Cannot start session." << std::endl;
         return false;
     }
-    if (xrSession == XR_NULL_HANDLE) {
-        std::cerr << "[error] xrSession is NULL! Cannot start session." << std::endl;
+
+    XrSessionActionSetsAttachInfo attachInfo{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
+    attachInfo.countActionSets = 1;
+    attachInfo.actionSets = &trackerActionSet;
+
+    if (XR_FAILED(xrAttachSessionActionSets(xrSession, &attachInfo))) {
+        std::cerr << "[Error] Failed to attach ActionSets. Inputs will not work.\n";
         return false;
     }
+    std::cout << "[Info] ActionSets attached successfully.\n";
+
     XrResult result;
     XrInstanceProperties instanceProperties{ XR_TYPE_INSTANCE_PROPERTIES };
     result = xrGetInstanceProperties(xrInstance, &instanceProperties);
@@ -249,65 +273,6 @@ bool HMD::beginOpenXRSession() {
     std::cerr << "[error] OpenXR session is not ready!" << std::endl;
     return false;
 }
-
-// bool HMD::CreateSwapchain() {
-
-// uint32_t formatCount = 0;
-// xrEnumerateSwapchainFormats(xrSession, 0, &formatCount, nullptr);
-// std::vector<int64_t> formats(formatCount);
-// xrEnumerateSwapchainFormats(xrSession, formatCount, &formatCount, formats.data());
-
-// // Choose a compatible format
-// int64_t chosenFormat = formats[0]; // Default to the first available format
-// for (int64_t format : formats) {
-//     if (format == GL_RGBA8 || format == GL_SRGB8_ALPHA8) { 
-//         chosenFormat = format;
-//         break;
-//     }
-// }
-
-
-// XrSwapchainCreateInfo swapchainCreateInfo = {};
-// swapchainCreateInfo.type = XR_TYPE_SWAPCHAIN_CREATE_INFO;
-// swapchainCreateInfo.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
-// swapchainCreateInfo.format = chosenFormat ;
-// swapchainCreateInfo.sampleCount = 1;
-// swapchainCreateInfo.width = HMDVariable::SWAPCHAIN_WIDTH;
-// swapchainCreateInfo.height = HMDVariable::SWAPCHAIN_HEIGHT;
-// swapchainCreateInfo.faceCount = 1;
-// swapchainCreateInfo.arraySize = 1;
-// swapchainCreateInfo.mipCount = 1;
-
-// XrResult result = xrCreateSwapchain(xrSession, &swapchainCreateInfo, &xrSwapchain);
-// if (XR_FAILED(result)) {
-//     std::cerr << "Failed to create swapchain"<< result << std::endl;
-//     return XR_NULL_HANDLE;
-// }
-
-// std::cout << "Swapchain created successfully." << std::endl;
-
-// uint32_t imageCount = 0;
-// xrEnumerateSwapchainImages(xrSwapchain, 0, &imageCount, nullptr);
-
-
-// swapchainImages.resize(imageCount, {XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR});
-
-// result = xrEnumerateSwapchainImages(
-//     xrSwapchain,
-//     imageCount,
-//     &imageCount,
-//     reinterpret_cast<XrSwapchainImageBaseHeader*>(swapchainImages.data())
-// );
-// if (XR_FAILED(result)) {
-//     std::cerr << "Failed to enumerate swapchain images: " << result << std::endl;
-//     return false;
-// }
-
-// std::cout << "Swapchain created successfully with " << imageCount << " images." << std::endl;
-// return true;
-// }
-
-// HMD.cpp
 
 bool HMD::CreateSwapchain(uint32_t width,
                           uint32_t height,
@@ -396,5 +361,131 @@ bool HMD::InitAllSwapchains() {
         std::cerr << "[init] small["<<i<<"]="<<smallWidth[i]<<"x"<<smallHeight[i]<<"\n";
 
     std::cout << "InitAllSwapchains: created main + " << kSmallCount << " small swapchains\n";
+    return true;
+}
+
+
+bool HMD::InitTrackerActions()
+{
+    // 1) Create Action Set
+    XrActionSetCreateInfo setInfo{XR_TYPE_ACTION_SET_CREATE_INFO};
+    strcpy(setInfo.actionSetName, "tracker_action_set");
+    strcpy(setInfo.localizedActionSetName, "Tracker Action Set");
+    setInfo.priority = 0;
+
+    if (xrCreateActionSet(xrInstance, &setInfo, &trackerActionSet) != XR_SUCCESS) {
+        std::cerr << "[error] Failed to create tracker ActionSet\n";
+        return false;
+    }
+
+
+    trackerCount = (int)trackerRoleStrings.size();
+    if (trackerCount > MAX_TRACKERS) {
+        std::cerr << "[Error] Too many trackers defined in role list!\n";
+        return false;
+    }
+
+    for (int i = 0; i < trackerCount; ++i) {
+        
+        if (XR_FAILED(xrStringToPath(xrInstance, trackerRoleStrings[i].c_str(), &trackerPaths[i]))) {
+            std::cerr << "[Error] Failed to convert path string: " << trackerRoleStrings[i] << "\n";
+            return false;
+        }
+    }
+
+    // 2) Create Pose Action
+    XrActionCreateInfo actInfo{XR_TYPE_ACTION_CREATE_INFO};
+    actInfo.actionType = XR_ACTION_TYPE_POSE_INPUT;
+    strcpy(actInfo.actionName, "tracker_pose");
+    strcpy(actInfo.localizedActionName, "Tracker Pose");
+
+    actInfo.countSubactionPaths = trackerCount;
+    actInfo.subactionPaths = trackerPaths;
+
+    if (xrCreateAction(trackerActionSet, &actInfo, &trackerPoseAction) != XR_SUCCESS) {
+        std::cerr << "[error] Failed to create tracker Pose Action\n";
+        return false;
+    }
+
+    return true;
+}
+
+
+bool HMD::BindTrackerAction()
+{
+    std::cout << "======= BindTrackerAction (Single Fixed) =======\n";
+
+    
+    XrPath profilePath;
+    xrStringToPath(xrInstance, "/interaction_profiles/htc/vive_tracker_htcx", &profilePath);
+
+    
+
+    std::vector<XrActionSuggestedBinding> bindings;
+
+    for (int i = 0; i < trackerCount; ++i) {
+        
+        std::string roleStr = trackerRoleStrings[i];
+        
+        
+        std::string fullPathStr = roleStr + "/input/grip/pose";
+
+        XrPath inputPath;
+        if (XR_FAILED(xrStringToPath(xrInstance, fullPathStr.c_str(), &inputPath))) {
+             std::cerr << "[Error] Failed to make path for: " << fullPathStr << "\n";
+             return false;
+        }
+        
+        // 3. 바인딩 추가
+        XrActionSuggestedBinding binding{};
+        binding.action = trackerPoseAction;
+        binding.binding = inputPath;
+        bindings.push_back(binding);
+
+        std::cout << "[Bind] " << fullPathStr << "\n";
+    }
+
+    XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+    suggested.interactionProfile = profilePath;
+    suggested.countSuggestedBindings = (uint32_t)bindings.size();
+    suggested.suggestedBindings = bindings.data();
+
+    
+    XrResult res = xrSuggestInteractionProfileBindings(xrInstance, &suggested);
+    if (XR_FAILED(res)) {
+        std::cerr << "[Error] Failed to suggest bindings: " << res << "\n";
+        return false;
+    }
+
+    std::cout << "[Success] Manually bound Left Foot path.\n";
+    return true;
+}
+
+
+
+
+
+bool HMD::CreateTrackerSpaces()
+{
+    for (int i = 0; i < trackerCount; ++i) {
+
+        XrActionSpaceCreateInfo spaceInfo{
+            XR_TYPE_ACTION_SPACE_CREATE_INFO
+        };
+
+        spaceInfo.action = trackerPoseAction;
+        spaceInfo.subactionPath = trackerPaths[i];
+        spaceInfo.poseInActionSpace.orientation = {0,0,0,1};
+        spaceInfo.poseInActionSpace.position    = {0,0,0};
+
+        if (xrCreateActionSpace(xrSession, &spaceInfo, &trackerSpaces[i]) != XR_SUCCESS) {
+            std::cerr << "[error] Failed to create ActionSpace for tracker["<<i<<"]\n";
+            return false;
+        }
+        else {
+            std::cerr << "[Info] Create ActionSpace for tracker["<<i<<"]\n";
+        }
+    }
+
     return true;
 }
