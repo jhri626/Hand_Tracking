@@ -1,6 +1,9 @@
 #pragma once
 #define XR_USE_GRAPHICS_API_OPENGL
 #define XR_USE_PLATFORM_WIN32
+#define _USE_MATH_DEFINES
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 
 #include <Windows.h>
 #include <glad/glad.h>
@@ -19,22 +22,25 @@
 
 #include <OpenXRProvider.h>
 #include <cv_bridge/cv_bridge.h>
-// #include <spdlog/spdlog.h>
-#include <ros/ros.h>
-#include <std_msgs/Header.h>
-#include <geometry_msgs/PoseArray.h>
+#include <spdlog/spdlog.h>
+#include <rclcpp/rclcpp.hpp>
+
+#include <std_msgs/msg/header.hpp>
+#include <geometry_msgs/msg/pose_array.hpp>
+#include <std_msgs/msg/float32_multi_array.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
+#include <std_msgs/msg/int8.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <sensor_msgs/msg/joint_state.hpp>
+#include <sensor_msgs/msg/image.hpp> 
 #include <tf2_ros/transform_broadcaster.h>
-#include <std_msgs/Float32MultiArray.h>
-#include <geometry_msgs/Vector3.h>
-#include <std_msgs/Int8.h>
+
 #include "HMD_number.h"
 #include "utils.h"
 #include "pose_utils.h"
-#include <visualization_msgs/Marker.h>
-#include <geometry_msgs/Point.h>
 #include <ik.h>
-#include <vr/HandSyncData.h>
-#include <sensor_msgs/JointState.h>
+#include "vr/msg/hand_sync_data.hpp"
 #include <algorithm>
 
 
@@ -66,13 +72,13 @@ public:
 
     void processFrameIteration();
     bool waitAndBeginFrame(XrFrameState& outState);
-    void publishHMDPose(const ros::Time& stamp);
+    void publishHMDPose(const rclcpp::Time& stamp);
     void locateHandJoints();
-    bool updatePoseArray(const ros::Time& stamp);
-    void computeJointAngles(const ros::Time& stamp);
+    bool updatePoseArray(const rclcpp::Time& stamp);
+    void computeJointAngles(const rclcpp::Time& stamp);
     void renderAndSubmitFrame(const XrFrameState& frameState);
-    void imageCallback(const sensor_msgs::ImageConstPtr& msg);
-    void currentCallback(const std_msgs::Float32MultiArray::ConstPtr& msg);
+    void imageCallback(const sensor_msgs::msg::Image::SharedPtr msg);
+    void currentCallback(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
     bool InitTrackerActions();
     bool BindTrackerAction();
     bool CreateTrackerSpaces();
@@ -80,21 +86,21 @@ public:
 
 
     Eigen::Vector2d computeThumbAngles(
-        const geometry_msgs::PoseArray& poses,
+        const geometry_msgs::msg::PoseArray& poses,
         const Eigen::Quaterniond& q_wrist,
         const Eigen::Vector3d& p_wrist,
         double smoothing_gamma
     );
 
     Eigen::Vector2d computeFingerAngles(
-        const geometry_msgs::PoseArray& poses,
+        const geometry_msgs::msg::PoseArray& poses,
         int idx,
         const Eigen::Vector3d& y_axis,
         double smoothing_gamma
     );
 
     void leftHandToRightHand(
-    geometry_msgs::PoseArray& poses
+    geometry_msgs::msg::PoseArray& poses
     );
 
     void UpdateAllTrackers();
@@ -164,24 +170,27 @@ private:
     // ROS
     int                                argc_;
     char**                             argv_;
-    ros::Publisher                     marker_pub; //debug tool
-    ros::Time                          start_time;
+    rclcpp::Node::SharedPtr node_;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub;  //debug tool
+    rclcpp::Time                       start_time;
+
     
-    ros::Subscriber                    imageSub;
-    ros::Subscriber                    currentSub;
-    tf2_ros::TransformBroadcaster*     tf_broadcaster{ nullptr };
-    geometry_msgs::PoseArray           pose_array;
-    std_msgs::Float32MultiArray        angle_array;
-    std_msgs::Float32MultiArray        data_array;
-    std_msgs::Float32MultiArray        qpos;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr      image_sub;
+    rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr current_sub;
+    std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster;
+    geometry_msgs::msg::PoseArray pose_array;
+    std_msgs::msg::Float32MultiArray angle_array;
+    std_msgs::msg::Float32MultiArray data_array;
+    std_msgs::msg::Float32MultiArray qpos;
+
 
     // for model data
     std::vector<float>                 latest_angles;
-    ros::Publisher                     hand_sync_pub;
-    ros::Publisher                     rviz_pub;
-    ros::Publisher                     data_pub;
-    ros::Publisher                     qpos_pub;
-    ros::Publisher                     tracker_pose_pub;
+    rclcpp::Publisher<vr::msg::HandSyncData>::SharedPtr hand_sync_pub;
+    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr   rviz_pub;
+    rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr data_pub;
+    rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr qpos_pub;
+    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr   tracker_pose_pub;
 
     // joint
     std::array<double, 5> AA_joint;

@@ -1,15 +1,16 @@
 #ifndef POSE_UTILS_H
 #define POSE_UTILS_H
 
-#include <ros/ros.h>
-#include <geometry_msgs/Pose.h>
-#include <geometry_msgs/Vector3.h>
-#include <visualization_msgs/Marker.h>
+#include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
+#include <visualization_msgs/msg/marker.hpp>
 #include <Eigen/Geometry>
+#include <string>
 #include <cmath>
 #include <iostream>
 
-visualization_msgs::Marker vectorToArrowMarker(
+visualization_msgs::msg::Marker vectorToArrowMarker(
     const Eigen::Vector3d& start,
     const Eigen::Vector3d& vec,
     const std::string& frame_id,
@@ -25,18 +26,35 @@ namespace pose_utils {
 //   q_relative = q_ref.conjugate() * q_target
 // and then converts it to Euler angles (roll, pitch, yaw),
 // printing the result in both radians and degrees.
-geometry_msgs::Vector3 poseToEulerAngles(const geometry_msgs::Pose &pose_ref,const geometry_msgs::Pose &pose_target);
+geometry_msgs::msg::Vector3 poseToEulerAngles(
+    const geometry_msgs::msg::Pose& pose_ref,
+    const geometry_msgs::msg::Pose& pose_target
+);
 
 // Function to compute the relative quaternion given two unit quaternions.
 // Returns q_relative = q_ref.conjugate() * q_target.
 Eigen::Quaterniond computeRelativeQuaternion(const Eigen::Quaterniond &q_ref,
-                                               const Eigen::Quaterniond &q_target);
+                                            const Eigen::Quaterniond &q_target);
 
-Eigen::Vector3d computePlane(const geometry_msgs::Pose &pose_meta, const geometry_msgs::Pose &pose_proxi_1,const geometry_msgs::Pose &pose_proxi_2); 
 
-double computeAngle(const Eigen::Vector3d &v1,const Eigen::Vector3d &v2 );
+double computeAngle(
+    const Eigen::Vector3d &v1,
+    const Eigen::Vector3d &v2 
+);
 
-Eigen::Vector2d jointAngle(ros::Publisher& pub,const Eigen::Vector3d &normal, const geometry_msgs::Pose &pose_meta, const geometry_msgs::Pose &pose_proxi,const geometry_msgs::Pose &pose_inter);
+Eigen::Vector3d computePlane(
+    const geometry_msgs::msg::Pose& pose_meta,
+    const geometry_msgs::msg::Pose& pose_proxi_1,
+    const geometry_msgs::msg::Pose& pose_proxi_2
+);
+
+Eigen::Vector2d jointAngle(
+const Eigen::Vector3d& normal,
+const geometry_msgs::msg::Pose& pose_meta,
+const geometry_msgs::msg::Pose& pose_proxi,
+const geometry_msgs::msg::Pose& pose_inter
+);
+
 } // namespace pose_utils
 
 #endif // POSE_UTILS_H

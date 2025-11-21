@@ -1,14 +1,22 @@
-#include <ros/ros.h>
-#include <pose_utils.h>
-#include <HMD.h>
-#include <geometry_msgs/Pose.h>
-#include <geometry_msgs/Vector3.h>
-#include <iostream>
+#define _USE_MATH_DEFINES
+#include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+
 #include <Eigen/Geometry>
 #include <cmath>
-#include "utils.h"
+#include <iostream>
 
-visualization_msgs::Marker vectorToArrowMarker(
+#include "utils.h"
+#include "pose_utils.h"
+
+#include <algorithm>
+using std::min;
+using std::max;
+
+
+visualization_msgs::msg::Marker vectorToArrowMarker(
     const Eigen::Vector3d& start,
     const Eigen::Vector3d& vec,
     const std::string& frame_id,
@@ -16,15 +24,14 @@ visualization_msgs::Marker vectorToArrowMarker(
     int id,
     float r, float g, float b
 ) {
-    visualization_msgs::Marker arrow;
+    visualization_msgs::msg::Marker arrow;
     arrow.header.frame_id = frame_id;
-    arrow.header.stamp = ros::Time::now();
     arrow.ns = ns;
     arrow.id = id;
-    arrow.type = visualization_msgs::Marker::ARROW;
-    arrow.action = visualization_msgs::Marker::ADD;
+    arrow.type = visualization_msgs::msg::Marker::ARROW;
+    arrow.action = visualization_msgs::msg::Marker::ADD;
 
-    geometry_msgs::Point p_start, p_end;
+    geometry_msgs::msg::Point p_start, p_end;
     p_start.x = start.x(); p_start.y = start.y(); p_start.z = start.z();
     p_end.x = start.x() + vec.x();
     p_end.y = start.y() + vec.y();
@@ -33,9 +40,9 @@ visualization_msgs::Marker vectorToArrowMarker(
     arrow.points.push_back(p_start);
     arrow.points.push_back(p_end);
 
-    arrow.scale.x = 0.01;  // shaft diameter
-    arrow.scale.y = 0.02;  // head diameter
-    arrow.scale.z = 0.02;  // head length
+    arrow.scale.x = 0.01;
+    arrow.scale.y = 0.02;
+    arrow.scale.z = 0.02;
 
     arrow.color.r = r;
     arrow.color.g = g;
@@ -46,9 +53,16 @@ visualization_msgs::Marker vectorToArrowMarker(
 }
 
 
+
 namespace pose_utils {
+
+    
     // Function to convert a geometry_msgs::Pose's quaternion into Euler angles (roll, pitch, yaw)
-    geometry_msgs::Vector3 poseToEulerAngles(const geometry_msgs::Pose &pose_ref,const geometry_msgs::Pose &pose_target) {
+    geometry_msgs::msg::Vector3 poseToEulerAngles(
+    const geometry_msgs::msg::Pose& pose_ref,
+    const geometry_msgs::msg::Pose& pose_target
+    )
+    {
         // Create an Eigen quaternion from the pose's orientation.
         // Eigen::Quaterniond takes the order (w, x, y, z)
         Eigen::Quaterniond q_ref = getQuaternionfromPose(pose_ref);
@@ -74,7 +88,7 @@ namespace pose_utils {
         // std::cout << "Roll: "  << roll * 180.0 / M_PI  
         //           << ", Pitch: " << pitch * 180.0 / M_PI 
         //           << ", Yaw: " << yaw * 180.0 / M_PI << "\n";
-        geometry_msgs::Vector3 euler_angles;
+        geometry_msgs::msg::Vector3 euler_angles;
         euler_angles.x = roll;
         euler_angles.y = pitch;
         euler_angles.z = yaw;
@@ -90,7 +104,10 @@ namespace pose_utils {
     return q_ref.conjugate() * q_target;
     }
 
-    Eigen::Vector3d computePlane(const geometry_msgs::Pose &pose_meta, const geometry_msgs::Pose &pose_proxi_1,const geometry_msgs::Pose &pose_proxi_2) 
+    Eigen::Vector3d computePlane(
+    const geometry_msgs::msg::Pose& pose_meta,
+    const geometry_msgs::msg::Pose& pose_proxi_1,
+    const geometry_msgs::msg::Pose& pose_proxi_2)
     {
         
         Eigen::Vector3d meta_position = getPositionfromPose(pose_meta);
@@ -108,7 +125,9 @@ namespace pose_utils {
         return normal;
     }
 
-    double computeAngle(const Eigen::Vector3d &v1,const Eigen::Vector3d &v2 )
+    double computeAngle(
+        const Eigen::Vector3d &v1,
+        const Eigen::Vector3d &v2 )
     {
         Eigen::Vector3d u1 = v1.normalized();
         Eigen::Vector3d u2 = v2.normalized();
@@ -124,7 +143,11 @@ namespace pose_utils {
         return angle_deg;
     }
 
-    Eigen::Vector2d jointAngle(ros::Publisher& pub,const Eigen::Vector3d &normal,const geometry_msgs::Pose &pose_meta, const geometry_msgs::Pose &pose_proxi,const geometry_msgs::Pose &pose_inter)
+    Eigen::Vector2d jointAngle(
+        const Eigen::Vector3d& normal,
+        const geometry_msgs::msg::Pose& pose_meta,
+        const geometry_msgs::msg::Pose& pose_proxi,
+        const geometry_msgs::msg::Pose& pose_inter)
     {
         Eigen::Vector3d meta_position = getPositionfromPose(pose_meta);
             
@@ -159,12 +182,8 @@ namespace pose_utils {
         //     jointAA = -jointAA;
         // }
 
-        Eigen::Vector2d angle(
-            jointFE,
-            jointAA
-        );
-        
-        return angle;
+        return Eigen::Vector2d(jointFE, jointAA);
+
     }
 }
 

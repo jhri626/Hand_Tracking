@@ -1,9 +1,12 @@
 #pragma once
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 
 #include <Windows.h>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
-#include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/pose_array.hpp>
 
 /// @brief Window procedure callback for handling basic Win32 messages.
 /// @param hWnd Handle to the window.
@@ -19,19 +22,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 bool CreateRenderWindow(HWND& hWnd);
 int checkUserInput();
 
-Eigen::Vector3d getPositionfromArray(const geometry_msgs::PoseArray& poses, size_t idx);
-Eigen::Vector3d getPositionfromPose(const geometry_msgs::Pose& pose);
+Eigen::Vector3d getPositionfromArray(const geometry_msgs::msg::PoseArray& poses, size_t idx);
+Eigen::Vector3d getPositionfromPose(const geometry_msgs::msg::Pose& pose);
 // Extract orientation quaternion from PoseArray at index idx
-Eigen::Quaterniond getQuaternionfromArray(const geometry_msgs::PoseArray& poses, size_t idx);
-Eigen::Quaterniond getQuaternionfromPose(const geometry_msgs::Pose& pose);
-void transformPoseArrayToBase(geometry_msgs::PoseArray& poses);
+Eigen::Quaterniond getQuaternionfromArray(const geometry_msgs::msg::PoseArray& poses, size_t idx);
+Eigen::Quaterniond getQuaternionfromPose(const geometry_msgs::msg::Pose& pose);
+void transformPoseArrayToBase(geometry_msgs::msg::PoseArray& poses);
 
 template <size_t N>
-std::array<geometry_msgs::Pose, N> selectPoses(
-  const geometry_msgs::PoseArray& pa,
+std::array<geometry_msgs::msg::Pose, N> selectPoses(
+  const geometry_msgs::msg::PoseArray& pa,
   const std::array<int, N>& indices)
 {
-  std::array<geometry_msgs::Pose, N> out;
+  std::array<geometry_msgs::msg::Pose, N> out;
   for (size_t i = 0; i < N; ++i) {
     out[i] = pa.poses[indices[i]];
   }
@@ -41,7 +44,7 @@ std::array<geometry_msgs::Pose, N> selectPoses(
 // Select N positions from a PoseArray by index list
 template <size_t N>
 std::array<Eigen::Vector3d, N> selectPositions(
-  const geometry_msgs::PoseArray& pa,
+  const geometry_msgs::msg::PoseArray& pa,
   const std::array<int, N>& indices)
 {
   std::array<Eigen::Vector3d, N> out;
@@ -55,7 +58,7 @@ std::array<Eigen::Vector3d, N> selectPositions(
 // Select N quaternions from a PoseArray by index list
 template <size_t N>
 std::array<Eigen::Quaterniond, N> selectQuaternions(
-  const geometry_msgs::PoseArray& pa,
+  const geometry_msgs::msg::PoseArray& pa,
   const std::array<int, N>& indices)
 {
   std::array<Eigen::Quaterniond, N> out;

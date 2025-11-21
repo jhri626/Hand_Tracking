@@ -1,19 +1,20 @@
+#define _USE_MATH_DEFINES
 #include <ik.h>
-#include <cmath>
-#include <pose_utils.h> 
-#include <iostream>
 #include <Eigen/Geometry>
-#include <geometry_msgs/Pose.h>
-#include <geometry_msgs/Vector3.h>
-#include <ceres/ceres.h>
-#include <ceres/loss_function.h>
 #include <lie_utils.h>
-#include"utils.h"
+#include "utils.h"
+
 
 
 namespace ik {
-    Eigen::Vector2d inversekinematics(const ros::Publisher& pub, const Eigen::Quaterniond q_ref, const Eigen::Vector3d p_ref,
-                   const geometry_msgs::Pose& pose_target, double L1, double L2, double theta_init_x, double theta_init_y)
+    Eigen::Vector2d inversekinematics(
+        const rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr& pub,                  
+        const Eigen::Quaterniond q_ref,
+        const Eigen::Vector3d p_ref,
+        const geometry_msgs::msg::Pose& pose_target,
+        double L1, double L2, 
+        double theta_init_x, 
+        double theta_init_y)
     {
         // 1) Convert poses to Eigen
         Eigen::Quaterniond q_tgt = getQuaternionfromPose(pose_target);
@@ -89,147 +90,151 @@ namespace ik {
 
 
 
-        pub.publish(vectorToArrowMarker(p_ref,proxi,"hmd_frame","v1",3,1,0,0));
+        pub->publish(vectorToArrowMarker(p_ref,proxi,"hmd_frame","v1",3,1,0,0));
             // std::cout<<"p_ref"<<p_ref<<std::endl;
-        pub.publish(vectorToArrowMarker(p_ref+proxi,newproxi-proxi,"hmd_frame","v1",4,0,1,0));
+        pub->publish(vectorToArrowMarker(p_ref+proxi,newproxi-proxi,"hmd_frame","v1",4,0,1,0));
 
         return Eigen::Vector2d(theta[0], theta[1]);
         
     }
 
-    /* Not used in now*/
+    // /* Not used in now*/
 
-    Eigen::Vector3d inversekinematicsIndex(const ros::Publisher& pub, const Eigen::Quaterniond q_ref, const Eigen::Vector3d p_ref,
-        const geometry_msgs::Pose& pose_target,double L1, double L2, double theta_init_1,double theta_init_2, double theta_init_3, const std::string& mode)
-        {
-                // 1) Convert poses to Eigen
-            Eigen::Quaterniond q_tgt = getQuaternionfromPose(pose_target);
-            Eigen::Vector3d p_tgt = getPositionfromPose(pose_target);
+    // Eigen::Vector3d inversekinematicsIndex(const ros::Publisher& pub, const Eigen::Quaterniond q_ref, const Eigen::Vector3d p_ref,
+    //     const geometry_msgs::msg::Pose& pose_target,double L1, double L2, double theta_init_1,double theta_init_2, double theta_init_3, const std::string& mode)
+    //     {
+    //             // 1) Convert poses to Eigen
+    //         Eigen::Quaterniond q_tgt = getQuaternionfromPose(pose_target);
+    //         Eigen::Vector3d p_tgt = getPositionfromPose(pose_target);
             
-            // 2) Compute relative SE(3) and extract translation
-            Eigen::Matrix4d T_rel = mr::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
-            Eigen::Vector3d target_pos = T_rel.block<3,1>(0,3);
-            // std::cout<< "L1 :"<<L1<<", L2 : "<<L2<<std::endl;
-            // std::cout<< "Target :"<<target_pos<<std::endl;
+    //         // 2) Compute relative SE(3) and extract translation
+    //         Eigen::Matrix4d T_rel = mr::computeRelativeSE3(q_ref, p_ref, q_tgt, p_tgt);
+    //         Eigen::Vector3d target_pos = T_rel.block<3,1>(0,3);
+    //         // std::cout<< "L1 :"<<L1<<", L2 : "<<L2<<std::endl;
+    //         // std::cout<< "Target :"<<target_pos<<std::endl;
 
-            ceres::Problem problem;
-            double theta[3] = {theta_init_1,theta_init_2,theta_init_3};
-            theta[0] = theta_init_1;
-            theta[1] = theta_init_2;
-            theta[2] = theta_init_3;
-                auto* cost_function =
-            new ceres::AutoDiffCostFunction<indexIKCostFunctor, 4, 3>(
-                new indexIKCostFunctor(target_pos, L1, L2, 0.02, 1e-6));
-            problem.AddResidualBlock(cost_function, nullptr, theta);
+    //         ceres::Problem problem;
+    //         double theta[3] = {theta_init_1,theta_init_2,theta_init_3};
+    //         theta[0] = theta_init_1;
+    //         theta[1] = theta_init_2;
+    //         theta[2] = theta_init_3;
+    //             auto* cost_function =
+    //         new ceres::AutoDiffCostFunction<indexIKCostFunctor, 4, 3>(
+    //             new indexIKCostFunctor(target_pos, L1, L2, 0.02, 1e-6));
+    //         problem.AddResidualBlock(cost_function, nullptr, theta);
             
 
-            problem.SetParameterLowerBound(theta, 0, theta_init_1 > 0 ? (theta_init_1 > M_PI/45 ? theta_init_1 - M_PI/45 : 0) : 0);
-            problem.SetParameterUpperBound(theta, 0, theta_init_1 < 2 * M_PI/3 ? (theta_init_1 < 2 * M_PI/3 - M_PI/45 ? theta_init_1 + M_PI/45 : 2 * M_PI/3) : 2 * M_PI/3);
-            problem.SetParameterLowerBound(theta, 1, theta_init_2 > 0 ? (theta_init_2 > M_PI/45 ? theta_init_2 - M_PI/45 : 0) : 0);
-            problem.SetParameterUpperBound(theta, 1, theta_init_2 < 2 * M_PI/3 ? (theta_init_2 < 2 * M_PI/3 - M_PI/9 ? theta_init_2 + M_PI/45 : 2 * M_PI/3) : 2 * M_PI/3);
-            problem.SetParameterLowerBound(theta, 2, theta_init_3 > -M_PI/4 + M_PI/45 ? theta_init_3 - M_PI/45 : -M_PI/4);
-            problem.SetParameterUpperBound(theta, 2,  theta_init_3 < M_PI/4 - M_PI/45 ? theta_init_3 + M_PI/45 : M_PI/4);
-            if (theta_init_1 < 0 || theta_init_1 > 2 * M_PI/3)
-            {
-                problem.SetParameterLowerBound(theta, 0, 0);
-                problem.SetParameterUpperBound(theta, 0,  M_PI/2);
-            }
-            if (theta_init_2 < 0 || theta_init_2 > 2 * M_PI/3)
-            {
-                problem.SetParameterLowerBound(theta, 1, 0);
-                problem.SetParameterUpperBound(theta, 1,  M_PI/2);
-            }
-            if (theta_init_3 < -M_PI/45 || theta_init_3 > M_PI/45)
-            {
-                problem.SetParameterLowerBound(theta, 2, -M_PI/4);
-                problem.SetParameterUpperBound(theta, 2,  M_PI/4);
-            }
-            // problem.SetParameterLowerBound(theta, 1, 0);
-            // problem.SetParameterUpperBound(theta, 1,  2 * M_PI/3);
-            // problem.SetParameterLowerBound(theta, 2, -M_PI/4);
-            // problem.SetParameterUpperBound(theta, 2,  M_PI/4);
+    //         problem.SetParameterLowerBound(theta, 0, theta_init_1 > 0 ? (theta_init_1 > M_PI/45 ? theta_init_1 - M_PI/45 : 0) : 0);
+    //         problem.SetParameterUpperBound(theta, 0, theta_init_1 < 2 * M_PI/3 ? (theta_init_1 < 2 * M_PI/3 - M_PI/45 ? theta_init_1 + M_PI/45 : 2 * M_PI/3) : 2 * M_PI/3);
+    //         problem.SetParameterLowerBound(theta, 1, theta_init_2 > 0 ? (theta_init_2 > M_PI/45 ? theta_init_2 - M_PI/45 : 0) : 0);
+    //         problem.SetParameterUpperBound(theta, 1, theta_init_2 < 2 * M_PI/3 ? (theta_init_2 < 2 * M_PI/3 - M_PI/9 ? theta_init_2 + M_PI/45 : 2 * M_PI/3) : 2 * M_PI/3);
+    //         problem.SetParameterLowerBound(theta, 2, theta_init_3 > -M_PI/4 + M_PI/45 ? theta_init_3 - M_PI/45 : -M_PI/4);
+    //         problem.SetParameterUpperBound(theta, 2,  theta_init_3 < M_PI/4 - M_PI/45 ? theta_init_3 + M_PI/45 : M_PI/4);
+    //         if (theta_init_1 < 0 || theta_init_1 > 2 * M_PI/3)
+    //         {
+    //             problem.SetParameterLowerBound(theta, 0, 0);
+    //             problem.SetParameterUpperBound(theta, 0,  M_PI/2);
+    //         }
+    //         if (theta_init_2 < 0 || theta_init_2 > 2 * M_PI/3)
+    //         {
+    //             problem.SetParameterLowerBound(theta, 1, 0);
+    //             problem.SetParameterUpperBound(theta, 1,  M_PI/2);
+    //         }
+    //         if (theta_init_3 < -M_PI/45 || theta_init_3 > M_PI/45)
+    //         {
+    //             problem.SetParameterLowerBound(theta, 2, -M_PI/4);
+    //             problem.SetParameterUpperBound(theta, 2,  M_PI/4);
+    //         }
+    //         // problem.SetParameterLowerBound(theta, 1, 0);
+    //         // problem.SetParameterUpperBound(theta, 1,  2 * M_PI/3);
+    //         // problem.SetParameterLowerBound(theta, 2, -M_PI/4);
+    //         // problem.SetParameterUpperBound(theta, 2,  M_PI/4);
         
-            ceres::Solver::Options options;
-            options.linear_solver_type = ceres::DENSE_QR;
-            // options.minimizer_progress_to_stdout = true;
-            options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
-            // options.max_num_iterations   = 20000;
+    //         ceres::Solver::Options options;
+    //         options.linear_solver_type = ceres::DENSE_QR;
+    //         // options.minimizer_progress_to_stdout = true;
+    //         options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
+    //         // options.max_num_iterations   = 20000;
     
-            ceres::Solver::Summary summary;
-            ceres::Solve(options, &problem, &summary);
+    //         ceres::Solver::Summary summary;
+    //         ceres::Solve(options, &problem, &summary);
             
-            // std::cout<< "theta 0 :"<<theta[0]<<", theta 1 : "<< theta[1] <<", theta 2 : "<< theta[2]<<std::endl;
+    //         // std::cout<< "theta 0 :"<<theta[0]<<", theta 1 : "<< theta[1] <<", theta 2 : "<< theta[2]<<std::endl;
             
             
     
-            // --- Build homogeneous transform T1: rotation about Z by theta2 ---
-            Eigen::Matrix4d T1;
-            T1 << std::cos(theta[2]),  0.0, std::sin(theta[2]), 0.0,
-                0.0,                1.0, 0.0,               0.0,
-                -std::sin(theta[2]),  0.0, std::cos(theta[2]), 0.0,
-                0.0,                0.0, 0.0,               1.0;
+    //         // --- Build homogeneous transform T1: rotation about Z by theta2 ---
+    //         Eigen::Matrix4d T1;
+    //         T1 << std::cos(theta[2]),  0.0, std::sin(theta[2]), 0.0,
+    //             0.0,                1.0, 0.0,               0.0,
+    //             -std::sin(theta[2]),  0.0, std::cos(theta[2]), 0.0,
+    //             0.0,                0.0, 0.0,               1.0;
     
-            // --- Build homogeneous transform T2: rotation about X by theta0 ---
-            Eigen::Matrix4d T2;
-            T2 << 1.0, 0.0,               0.0,                0.0,
-                0.0, std::cos(theta[0]),  std::sin(theta[0]),   0.0,
-                0.0, -std::sin(theta[0]), std::cos(theta[0]),  -0.0,
-                0.0, 0.0,               0.0,                1.0;
+    //         // --- Build homogeneous transform T2: rotation about X by theta0 ---
+    //         Eigen::Matrix4d T2;
+    //         T2 << 1.0, 0.0,               0.0,                0.0,
+    //             0.0, std::cos(theta[0]),  std::sin(theta[0]),   0.0,
+    //             0.0, -std::sin(theta[0]), std::cos(theta[0]),  -0.0,
+    //             0.0, 0.0,               0.0,                1.0;
     
-            // --- Build homogeneous transform T3: rotation about Y by theta1 + translation block update ---
-            Eigen::Matrix4d T3;
-            T3 << 1.0, 0.0,                0.0,               0.0,
-                0.0, std::cos(theta[1]),   std::sin(theta[1]),  0.0,
-                0.0, -std::sin(theta[1]),  std::cos(theta[1]), -0.0,
-                0.0, 0.0,                0.0,               1.0;
+    //         // --- Build homogeneous transform T3: rotation about Y by theta1 + translation block update ---
+    //         Eigen::Matrix4d T3;
+    //         T3 << 1.0, 0.0,                0.0,               0.0,
+    //             0.0, std::cos(theta[1]),   std::sin(theta[1]),  0.0,
+    //             0.0, -std::sin(theta[1]),  std::cos(theta[1]), -0.0,
+    //             0.0, 0.0,                0.0,               1.0;
     
-            // Compute the translation part of T3 so that the link1 offset L1 is applied:
-            // q = (0, 0, -L1)^T
-            Eigen::Vector3d q(0.0, 0.0, -L1);
-            // I - R part of T3.block<3,3>
-            Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
-            Eigen::Matrix3d R3 = T3.block<3,3>(0,0);
-            // Set the 3×1 translation block (upper right) of T3
-            T3.block<3,1>(0,3) = (I - R3) * q;
+    //         // Compute the translation part of T3 so that the link1 offset L1 is applied:
+    //         // q = (0, 0, -L1)^T
+    //         Eigen::Vector3d q(0.0, 0.0, -L1);
+    //         // I - R part of T3.block<3,3>
+    //         Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
+    //         Eigen::Matrix3d R3 = T3.block<3,3>(0,0);
+    //         // Set the 3×1 translation block (upper right) of T3
+    //         T3.block<3,1>(0,3) = (I - R3) * q;
     
-            // --- Local end-effector position in its own frame ---
-            Eigen::Vector4d p_local;
-            p_local << 0.0, 0.0, -(L1 + L2), 1.0;  
+    //         // --- Local end-effector position in its own frame ---
+    //         Eigen::Vector4d p_local;
+    //         p_local << 0.0, 0.0, -(L1 + L2), 1.0;  
     
-            // --- Compute world position by chaining transforms ---
-            Eigen::Vector4d p_world = T1 * (T2 * (T3 * p_local));
-            // std::cout<<"ik pos"<< p_world.block<3,1>(0,0) <<std::endl;
-            // double residual_x = target_pos[0]-p_world[0];
-            // double residual_y = target_pos[1]-p_world[1];
-            // double residual_z = target_pos[2]-p_world[2];
-            // std::cout<<"residial x:"<<residual_x*residual_x<<"residial y:"<<residual_y*residual_y<<"residial z:"<<residual_z*residual_z<<std::endl;
+    //         // --- Compute world position by chaining transforms ---
+    //         Eigen::Vector4d p_world = T1 * (T2 * (T3 * p_local));
+    //         // std::cout<<"ik pos"<< p_world.block<3,1>(0,0) <<std::endl;
+    //         // double residual_x = target_pos[0]-p_world[0];
+    //         // double residual_y = target_pos[1]-p_world[1];
+    //         // double residual_z = target_pos[2]-p_world[2];
+    //         // std::cout<<"residial x:"<<residual_x*residual_x<<"residial y:"<<residual_y*residual_y<<"residial z:"<<residual_z*residual_z<<std::endl;
     
             
-            Eigen::Vector3d new_proxi = q_ref.toRotationMatrix() * p_world.block<3,1>(0,0);
-            Eigen::Vector3d x(1,0,0);
-            Eigen::Vector3d y(0,1,0);
-            Eigen::Vector3d z(0,0,1);
-            Eigen::Vector3d proxi = -L1 * z;
-            proxi = q_ref.toRotationMatrix() * mr::MatrixExp3(mr::VecToso3(y*theta[2])) * mr::MatrixExp3(mr::VecToso3(-x*theta[0])) * proxi;
-            // proxi = q_ref.toRotationMatrix() * lie_utils::Matexp3(lie_utils::vecToso3(y),theta[2]) * lie_utils::Matexp3(lie_utils::vecToso3(-x),0) * proxi;
-            // Eigen::Vector3d proxi_2 = lie_utils::Matexp3(lie_utils::vecToso3(y),0) * lie_utils::Matexp3(lie_utils::vecToso3(-x),0) * proxi;
+    //         Eigen::Vector3d new_proxi = q_ref.toRotationMatrix() * p_world.block<3,1>(0,0);
+    //         Eigen::Vector3d x(1,0,0);
+    //         Eigen::Vector3d y(0,1,0);
+    //         Eigen::Vector3d z(0,0,1);
+    //         Eigen::Vector3d proxi = -L1 * z;
+    //         proxi = q_ref.toRotationMatrix() * mr::MatrixExp3(mr::VecToso3(y*theta[2])) * mr::MatrixExp3(mr::VecToso3(-x*theta[0])) * proxi;
+    //         // proxi = q_ref.toRotationMatrix() * lie_utils::Matexp3(lie_utils::vecToso3(y),theta[2]) * lie_utils::Matexp3(lie_utils::vecToso3(-x),0) * proxi;
+    //         // Eigen::Vector3d proxi_2 = lie_utils::Matexp3(lie_utils::vecToso3(y),0) * lie_utils::Matexp3(lie_utils::vecToso3(-x),0) * proxi;
     
-            // std::cout<<L2<<" "<<(new_proxi-proxi).norm()<<std::endl;
-            pub.publish(vectorToArrowMarker(p_ref,proxi,"hmd_frame","v1",3,1,0,0));
-            // std::cout<<"p_ref"<<p_ref<<std::endl;
-            pub.publish(vectorToArrowMarker(p_ref+proxi,new_proxi-proxi,"hmd_frame","v1",4,0,1,0));
-            // pub.publish(vectorToArrowMarker(p_ref,proxi_2,"hmd_frame","v1",5,0,0,1));
-            return Eigen::Vector3d(theta[0] , theta[1], theta[2]);
-        }
-        // std::cout<<"work?"<<std::endl;e
+    //         // std::cout<<L2<<" "<<(new_proxi-proxi).norm()<<std::endl;
+    //         pub.publish(vectorToArrowMarker(p_ref,proxi,"hmd_frame","v1",3,1,0,0));
+    //         // std::cout<<"p_ref"<<p_ref<<std::endl;
+    //         pub.publish(vectorToArrowMarker(p_ref+proxi,new_proxi-proxi,"hmd_frame","v1",4,0,1,0));
+    //         // pub.publish(vectorToArrowMarker(p_ref,proxi_2,"hmd_frame","v1",5,0,0,1));
+    //         return Eigen::Vector3d(theta[0] , theta[1], theta[2]);
+    //     }
+    //     // std::cout<<"work?"<<std::endl;e
 
-        // 4) Return optimized angles
-
-
+    //     // 4) Return optimized angles
 
 
-        Eigen::Vector2d Anyteleopmethod(const Eigen::Quaterniond q_ref, const Eigen::Vector3d p_ref, const geometry_msgs::Pose& pose_inter,
-                const geometry_msgs::Pose& pose_target, double d_pre, double AA, int idx)
+
+
+        Eigen::Vector2d Anyteleopmethod(
+            const Eigen::Quaterniond q_ref, 
+            const Eigen::Vector3d p_ref, 
+            const geometry_msgs::msg::Pose& pose_inter,
+            const geometry_msgs::msg::Pose& pose_target, 
+            double d_pre, double AA, int idx)
         {
                 // 1) Convert poses to Eigen
             Eigen::Quaterniond q_tgt = getQuaternionfromPose(pose_target);

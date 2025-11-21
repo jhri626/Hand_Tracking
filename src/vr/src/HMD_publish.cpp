@@ -1,7 +1,6 @@
 // This file contains the definition of processFrameIteration() function that
 // handles frame waiting, beginning, hand joint location updates, and frame submission.
 #define XR_KHR_composition_layer_color
-#include <windows.h>
 #include <glad/glad.h>
 #include <openxr/openxr.h>
 #include <chrono>
@@ -25,7 +24,7 @@ void HMD::processFrameIteration() {
 
     UpdateAllTrackers();
 
-    ros::Time now = ros::Time::now();
+    rclcpp::Time now = node_->now();
     publishHMDPose(now);
     locateHandJoints();
     bool valid = updatePoseArray(now);
@@ -53,12 +52,13 @@ bool HMD::waitAndBeginFrame(XrFrameState& outState) {
     return true;
 }
 
-void HMD::publishHMDPose(const ros::Time& stamp) {
+void HMD::publishHMDPose(const rclcpp::Time& stamp) {
     XrSpaceLocation loc{ XR_TYPE_SPACE_LOCATION };
     if (XR_SUCCEEDED(xrLocateSpace(hmdSpace, worldSpace, xrTime, &loc)) &&
         (loc.locationFlags & (XR_SPACE_LOCATION_POSITION_VALID_BIT | XR_SPACE_LOCATION_ORIENTATION_VALID_BIT))) {
 
-        geometry_msgs::TransformStamped tfMsg;
+        geometry_msgs::msg::TransformStamped tfMsg;
+
         tfMsg.header.stamp    = stamp;
         tfMsg.header.frame_id = "world";
         tfMsg.child_frame_id  = "hmd_frame";
@@ -94,7 +94,7 @@ void HMD::locateHandJoints() {
 }
 
 
-bool HMD::updatePoseArray(const ros::Time& stamp) {
+bool HMD::updatePoseArray(const rclcpp::Time& stamp) {
     // Initialize header
     pose_array.header.stamp    = stamp;
     pose_array.header.frame_id = "hmd_frame";
@@ -113,7 +113,7 @@ bool HMD::updatePoseArray(const ros::Time& stamp) {
         if ((leftLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) ||
             (leftLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
             
-            geometry_msgs::Pose p;
+            geometry_msgs::msg::Pose p;
             p.position.x = leftLoc.pose.position.x;
             p.position.y = leftLoc.pose.position.y;
             p.position.z = leftLoc.pose.position.z;
@@ -131,7 +131,7 @@ bool HMD::updatePoseArray(const ros::Time& stamp) {
         if ((rightLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) &&
             (rightLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
             
-            geometry_msgs::Pose p;
+            geometry_msgs::msg::Pose p;
             p.position.x = rightLoc.pose.position.x;
             p.position.y = rightLoc.pose.position.y;
             p.position.z = rightLoc.pose.position.z;
@@ -151,7 +151,7 @@ bool HMD::updatePoseArray(const ros::Time& stamp) {
 
 
 void HMD::leftHandToRightHand(
-    geometry_msgs::PoseArray& poses
+    geometry_msgs::msg::PoseArray& poses    
 )
 {
     double eps = 1e-12;
@@ -196,7 +196,7 @@ void HMD::leftHandToRightHand(
 
 
 Eigen::Vector2d HMD::computeThumbAngles(
-    const geometry_msgs::PoseArray& poses,
+    const geometry_msgs::msg::PoseArray& poses,
     const Eigen::Quaterniond& q_wrist,
     const Eigen::Vector3d& p_wrist,
     double smoothing_gamma
@@ -217,7 +217,7 @@ Eigen::Vector2d HMD::computeThumbAngles(
 
 
 Eigen::Vector2d HMD::computeFingerAngles(
-    const geometry_msgs::PoseArray& poses,
+    const geometry_msgs::msg::PoseArray& poses,
     int idx,                        // finger index 1..3
     const Eigen::Vector3d& y_axis,
     double smoothing_gamma
@@ -225,7 +225,7 @@ Eigen::Vector2d HMD::computeFingerAngles(
     int base = FINGER_JOINT_INDICES[2*(idx-1)];
     int tip  = FINGER_JOINT_INDICES[2*(idx-1)+1];
     auto euler  = pose_utils::poseToEulerAngles(poses.poses[base], poses.poses[tip]);
-    auto angles = pose_utils::jointAngle(marker_pub, y_axis,
+    auto angles = pose_utils::jointAngle(y_axis,
                                          poses.poses[1+5*idx],
                                          poses.poses[2+5*idx],
                                          poses.poses[3+5*idx]);
@@ -239,7 +239,7 @@ Eigen::Vector2d HMD::computeFingerAngles(
     return { AA_joint[idx], FE_joint[idx] };
 }
 
-void HMD::computeJointAngles(const ros::Time& stamp) {
+void HMD::computeJointAngles(const rclcpp::Time& stamp) {
 
     latest_angles.clear();
     latest_angles.resize(2 * fingernum_ + 3);
@@ -286,7 +286,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
         latest_angles[i+fingernum_] = ang[1];
     }
 
-    geometry_msgs::Pose I;
+    geometry_msgs::msg::Pose I;
     I.position.x = 0;
     I.position.y = 0;
     I.position.z = 0;
@@ -296,7 +296,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     I.orientation.z = std::sqrt(0.5);
     I.orientation.w = 0;
     
-    geometry_msgs::Vector3 euler = pose_utils::poseToEulerAngles(I,pose_array.poses[XR_HAND_JOINT_PALM_EXT]);
+    geometry_msgs::msg::Vector3 euler = pose_utils::poseToEulerAngles(I,pose_array.poses[XR_HAND_JOINT_PALM_EXT]);
 
     latest_angles[2*fingernum_] = euler.x;
     latest_angles[2*fingernum_ + 1] = euler.y;
@@ -363,12 +363,12 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     qpos_pub.publish(qpos);
     */
 
-    geometry_msgs::PoseArray network_input = pose_array;
+    geometry_msgs::msg::PoseArray network_input = pose_array;
     transformPoseArrayToBase(network_input);
 
 
 
-    vr::HandSyncData sync_msg;
+    vr::msg::HandSyncData sync_msg;
     sync_msg.header.stamp = stamp;
     sync_msg.header.frame_id = "hmd_frame";
     sync_msg.pose_array = network_input;
@@ -377,8 +377,9 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     sync_msg.angles = latest_angles;
     sync_msg.trigger_flag = checkUserInput();
     
-    hand_sync_pub.publish(sync_msg);
-    rviz_pub.publish(pose_array);
+    hand_sync_pub->publish(sync_msg);
+    rviz_pub->publish(pose_array);
+
     // data_pub.publish(data_index_array);
 }
 
@@ -518,7 +519,7 @@ void HMD::renderAndSubmitFrame(const XrFrameState& frameState) {
 
     
     
-void HMD::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
+void HMD::imageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
 
     // std::cerr << "[Info] image callback active"<<std::endl;
     try {
@@ -531,11 +532,12 @@ void HMD::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
         latestImage = img.clone();
         // std::cerr << "[Info] image callback"<<std::endl;
     } catch (cv_bridge::Exception& e) {
-        ROS_ERROR("cv_bridge exception: %s", e.what());
+        RCLCPP_ERROR(node_->get_logger(), "cv_bridge exception: %s", e.what());
     }
 }
 
-void HMD::currentCallback(const std_msgs::Float32MultiArray::ConstPtr& msg){
+void HMD::currentCallback(const std_msgs::msg::Float32MultiArray::SharedPtr msg)
+{
     std::copy(msg->data.begin() + 4, msg->data.begin() + 8, current.begin());
 }
 
@@ -552,8 +554,8 @@ void HMD::UpdateAllTrackers()
     xrSyncActions(xrSession, &syncInfo);
 
     // 2) Prepare PoseArray for ROS publish
-    geometry_msgs::PoseArray trackerArray;
-    trackerArray.header.stamp = ros::Time::now();
+    geometry_msgs::msg::PoseArray trackerArray;
+    trackerArray.header.stamp = node_->now();
     trackerArray.header.frame_id = "world";
     trackerArray.poses.resize(trackerCount);
 
@@ -583,9 +585,9 @@ void HMD::UpdateAllTrackers()
                 bool posValid = loc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT;
                 bool oriValid = loc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
 
-                geometry_msgs::Pose p;
+                geometry_msgs::msg::Pose p;
 
-                std::cout << "pos :" << posValid <<", ori :"<< oriValid<<std::endl;
+                // std::cout << "pos :" << posValid <<", ori :"<< oriValid<<std::endl;
 
                 if (posValid && oriValid) {
                     p.position.x = loc.pose.position.x;
@@ -614,5 +616,5 @@ void HMD::UpdateAllTrackers()
     for (auto& j : jobs) j.get();
 
     // 6) Publish once
-    tracker_pose_pub.publish(trackerArray);
+    tracker_pose_pub->publish(trackerArray);
 }

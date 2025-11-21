@@ -1,6 +1,5 @@
 #define XR_EXTENSION_PROTOTYPES
 #include "HMD.h"
-#include <Windows.h>
 #include <iostream>
 #include <cstring>
 // #include <spdlog/spdlog.h>

@@ -2,69 +2,48 @@
 #include <iostream>
 #include <memory>
 // #include <spdlog/spdlog.h>
-#include <ros/ros.h>
-#include <sensor_msgs/Image.h>
-#include <cv_bridge/cv_bridge.h>
-#include <geometry_msgs/PoseArray.h>
-#include <tf2_ros/transform_broadcaster.h>
-#include <std_msgs/Float32MultiArray.h>
-#include <std_msgs/Int8.h>
+#include <rclcpp/rclcpp.hpp>
 #include "HMD.h"
+
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 #include <GL/gl.h>
 #include <thread>
 #include <mutex>
 
-HMD::HMD(int arc, char *arv[])
+HMD::HMD(int argc, char *argv[])
+: argc_(argc),
+  argv_(argv),
+  hWnd(nullptr),
+  hDC(nullptr),
+  hGLRC(nullptr),
+  xrInstance(XR_NULL_HANDLE),
+  xrSession(XR_NULL_HANDLE),
+  worldSpace(XR_NULL_HANDLE),
+  hmdSpace(XR_NULL_HANDLE),
+  xrSystemId(XR_NULL_SYSTEM_ID),
+  xrTime(0),
+  currentSessionState{},
+  xrSwapchain(XR_NULL_HANDLE),
+  pXRHandTracking(nullptr),
+  pLogger(spdlog::default_logger()),
+  tf_broadcaster(nullptr),
+  bDrawHandJoints(false),
+  AA_joint{0.0, 0.0, 0.0, 0.0},
+  FE_joint{0.0, 0.0, 0.0, 0.0},
+  qpos_FE{0.0, 0.0, 0.0, 0.0},
+  qpos_AA{0.0, 0.0, 0.0, 0.0},
+  gamma(0.9),
+  fingernum_(4),
+  m_Index_ik(Eigen::Vector3d(-M_PI/36.0, -M_PI/36.0, -M_PI/44.0))
 {
-
-    argc_= arc;
-    argv_= arv;
-
-    OpenXRProvider::XRExtHandTracking* pXRHandTracking = nullptr;
-    std::shared_ptr<spdlog::logger> pLogger = spdlog::default_logger();
-    tf2_ros::TransformBroadcaster* tf_broadcaster;
-    
-    bool bDrawHandJoints = false;
-    
-    ros::Publisher hand_pose_pub;
-    std::vector<int> specificIndices = {1, 5, 10, 15, 20};
-    geometry_msgs::PoseArray PoseArray;
-    
-
-        // Global variables required for OpenXR and OpenGL context handling
-    HWND   hWnd   = nullptr;            // Handle to the window
-    HDC    hDC    = nullptr;            // Device Context handle
-    HGLRC  hGLRC  = nullptr;            // OpenGL Rendering Context handle
-    XrInstance xrInstance = XR_NULL_HANDLE;
-    XrSession  xrSession  = XR_NULL_HANDLE;
-    XrSpace    worldSpace    = XR_NULL_HANDLE;
-    XrSpace    hmdSpace    = XR_NULL_HANDLE;
-    XrSystemId xrSystemId = XR_NULL_SYSTEM_ID;
-    XrTime     xrTime     = 0;           // Initialized frame time
-    XrSessionState currentSessionState;
-    XrSwapchain xrSwapchain = XR_NULL_HANDLE;
-
-    std::vector<XrSwapchainImageOpenGLKHR> swapchainImages;
-
-    // For frame
-    cv::Mat latestImage;             // Stores the latest image from ROS
-    std::mutex imageMutex;           // Mutex to protect access to latestImage
-
-    // For AA angle
-    AA_joint = {0.0, 0.0, 0.0, 0.0};
-    FE_joint = {0.0, 0.0, 0.0, 0.0};
-    qpos_FE = {0.0,0.0,0.0,0.0};
-    qpos_AA = {0.0,0.0,0.0,0.0};
-    gamma = 0.9;
-    fingernum_ = 4;
-    m_Index_ik = {-M_PI/36,-M_PI/36,-M_PI/44};
-    
+    // Initialize vector sizes
     qpos.data.resize(11);
-    // qpos.name = {"thumbAA", "indexAA", "middleAA", "ringAA","thumbFE", "indexFE", "middleFE", "ringFE"};
 
+    // Prepare pose array size (indices vector must already exist as a const member)
+    pose_array.poses.resize(kSpecificIndices.size());
 }
+
 
 HMD::~HMD()
 {
@@ -83,28 +62,36 @@ int HMD::init()
         return 1;
     }
     std::cerr << "[Info] Init system" << std::endl;
-    ros::init(argc_, this->argv_, "openxr_hand_tracking_node");
+    rclcpp::init(argc_, argv_);
+    // rclcpp::init(0, nullptr);
+    node_ = rclcpp::Node::make_shared("openxr_hand_tracking_node");
     std::cerr << "[Info] Ros init" << std::endl;
-    ros::NodeHandle nh;
 
     // for model
-    hand_sync_pub = nh.advertise<vr::HandSyncData>("hand_sync_data", 1);
-    rviz_pub = nh.advertise<geometry_msgs::PoseArray>("rviz", 1);
+    hand_sync_pub = node_->create_publisher<vr::msg::HandSyncData>("hand_sync_data", 1);
+    rviz_pub = node_->create_publisher<geometry_msgs::msg::PoseArray>("rviz", 1);
     // data_pub = nh.advertise<std_msgs::Float32MultiArray>("data", 1);
     // qpos_pub = nh.advertise<std_msgs::Float32MultiArray>("/baseline", 1);
-    tracker_pose_pub = nh.advertise<geometry_msgs::PoseArray>("tracker_pose", 1);
+    tracker_pose_pub = node_->create_publisher<geometry_msgs::msg::PoseArray>("tracker_pose", 1);
+    marker_pub = node_->create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 1); // debug tool
 
-    marker_pub = nh.advertise<visualization_msgs::Marker>("visualization_marker", 1); // debug tool
+    image_sub = node_->create_subscription<sensor_msgs::msg::Image>(
+    "camera/image_raw", 
+    1,
+    std::bind(&HMD::imageCallback, this, std::placeholders::_1)
+    );
 
-    imageSub = nh.subscribe("camera/image_raw", 1, &HMD::imageCallback, this);
+    current_sub = node_->create_subscription<std_msgs::msg::Float32MultiArray>(
+        "/current_state",
+        1,
+        std::bind(&HMD::currentCallback, this, std::placeholders::_1)
+    );
 
-    currentSub = nh.subscribe("/current_state", 1, &HMD::currentCallback, this);
-
-    tf_broadcaster = new tf2_ros::TransformBroadcaster();
+    tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(node_);
 
     // pose_array.poses.resize(specific_indices.size()*2);
     pose_array.poses.resize(kSpecificIndices.size());
-    start_time = ros::Time::now();
+    start_time = node_->now();
 
     
 
@@ -168,16 +155,16 @@ int HMD::init()
 
 void HMD::rospublish()
 {
-    ros::Rate loop_rate(60);
+    rclcpp::WallRate loop_rate(60);
     const size_t n = kSpecificIndices.size();
     pose_array.poses.clear();
     pose_array.poses.resize(n);  
-    while (ros::ok()) { 
 
-        ros::spinOnce();  
-        processFrameIteration(); 
-        loop_rate.sleep(); 
-    }
+    while (rclcpp::ok()) {
+    rclcpp::spin_some(node_);
+    processFrameIteration();
+    loop_rate.sleep();
+}
     
     delete pXRHandTracking;
     std::cout<<"break finish"<<std::endl;

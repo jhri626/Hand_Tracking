@@ -3,13 +3,18 @@
 
 #include <cmath>
 #include <iostream>
+#include <HMD.h>
 #include <Eigen/Geometry>
-#include <geometry_msgs/Pose.h>
-#include <geometry_msgs/Vector3.h>
+#include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
 #include <ceres/ceres.h>
+#include <ceres/loss_function.h>
 #include <pose_utils.h>
 #include <hand_number.h>
 #include "ceres/rotation.h"
+#include <rclcpp/rclcpp.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+
 
 
 
@@ -20,23 +25,23 @@ namespace ik {
 
   
   Eigen::Vector2d inversekinematics(
-      const ros::Publisher& pub,
+      const rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr& pub,
       const Eigen::Quaterniond q_ref, 
       const Eigen::Vector3d p_ref,
-      const geometry_msgs::Pose& pose_target,
+      const geometry_msgs::msg::Pose& pose_target,
       double L1, double L2, double theta_init_x, double theta_init_y);
       
-  Eigen::Vector3d inversekinematicsIndex(
-    const ros::Publisher& pub,
-    const Eigen::Quaterniond q_ref, 
-    const Eigen::Vector3d p_ref,
-    const geometry_msgs::Pose& pose_target,
-    double L1, double L2, double theta_init_1, double theta_init_2,double theta_init_3, const std::string& mode);
+  // Eigen::Vector3d inversekinematicsIndex(
+  //   const ros::Publisher& pub,
+  //   const Eigen::Quaterniond q_ref, 
+  //   const Eigen::Vector3d p_ref,
+  //   const geometry_msgs::Pose& pose_target,
+  //   double L1, double L2, double theta_init_1, double theta_init_2,double theta_init_3, const std::string& mode);
 
     Eigen::Vector2d Anyteleopmethod(const Eigen::Quaterniond q_ref,
                                   const Eigen::Vector3d p_ref,
-                                  const geometry_msgs::Pose& pose_inter,
-                                  const geometry_msgs::Pose& pose_target,
+                                  const geometry_msgs::msg::Pose& pose_inter,
+                                  const geometry_msgs::msg::Pose& pose_target,
                                   double d_pre,
                                   double AA,
                                   int idx);

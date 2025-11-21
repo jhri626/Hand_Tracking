@@ -4,16 +4,18 @@
 
 int main(int argc, char* argv[])
 {   
-    HMD* hmdSystem = new HMD(argc, argv);
+    // rclcpp::init(argc, argv);
+    auto hmdSystem = std::make_shared<HMD>(argc, argv);
+
     
     hmdSystem->init();
     hmdSystem->rospublish();
 
 
     std::cout<<"Start object destroy"<<std::endl;
-    delete hmdSystem;
+    hmdSystem.reset();
     std::cout<<"object delete"<<std::endl;
-    ros::shutdown();
+    rclcpp::shutdown();
     std::cout<<"ros shutdown"<<std::endl;    
     return 0;
 }

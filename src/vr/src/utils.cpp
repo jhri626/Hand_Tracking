@@ -1,7 +1,6 @@
-#include <Windows.h>
+#include <utils.h>
 #include <openxr/openxr.h>
 #include <iostream>
-#include <utils.h>
 #include <conio.h>
 
 
@@ -59,7 +58,7 @@ bool CreateRenderWindow(HWND& hWnd)
 }
 
 Eigen::Vector3d getPositionfromArray(
-    const geometry_msgs::PoseArray& poses, size_t idx)
+    const geometry_msgs::msg::PoseArray& poses, size_t idx)
 {
     const auto& p = poses.poses[idx].position;
 
@@ -68,7 +67,7 @@ Eigen::Vector3d getPositionfromArray(
 
 
 Eigen::Vector3d getPositionfromPose(
-    const geometry_msgs::Pose& pose)
+    const geometry_msgs::msg::Pose& pose)
 {
     const auto& p = pose.position;
 
@@ -76,7 +75,7 @@ Eigen::Vector3d getPositionfromPose(
 }
 
 Eigen::Quaterniond getQuaternionfromArray(
-    const geometry_msgs::PoseArray& poses, 
+    const geometry_msgs::msg::PoseArray& poses, 
     size_t idx)
 {
     const auto& o = poses.poses[idx].orientation;
@@ -84,14 +83,14 @@ Eigen::Quaterniond getQuaternionfromArray(
 }
 
 Eigen::Quaterniond getQuaternionfromPose(
-    const geometry_msgs::Pose& pose)
+    const geometry_msgs::msg::Pose& pose)
 {
     const auto& o = pose.orientation;
     return {o.w, o.x, o.y, o.z};
 }
 
 
-void transformPoseArrayToBase(geometry_msgs::PoseArray& poses)
+void transformPoseArrayToBase(geometry_msgs::msg::PoseArray& poses)
 {
     if (poses.poses.empty()) {
         return; 
@@ -99,11 +98,7 @@ void transformPoseArrayToBase(geometry_msgs::PoseArray& poses)
 
     
     Eigen::Quaterniond q = getQuaternionfromArray(poses, XR_HAND_JOINT_PALM_EXT);
-
     Eigen::Matrix3d R = q.toRotationMatrix();
-
-    
-
     Eigen::Vector3d t =  getPositionfromArray(poses, XR_HAND_JOINT_PALM_EXT);
 
     
@@ -113,7 +108,7 @@ void transformPoseArrayToBase(geometry_msgs::PoseArray& poses)
 
     
     for (size_t i = 1; i < poses.poses.size(); ++i) {
-        geometry_msgs::Pose& p = poses.poses[i];
+        auto& p = poses.poses[i];
 
         Eigen::Vector4d pt(p.position.x, p.position.y, p.position.z, 1.0);
         Eigen::Vector4d pt_trans = T_inv * pt;
