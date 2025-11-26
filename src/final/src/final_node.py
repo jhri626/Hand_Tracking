@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import rospy
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from std_msgs.msg import Float32MultiArray, Float64MultiArray, Int16
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Header
@@ -7,6 +9,7 @@ import numpy as np
 import dynamixel_sdk as dxl 
 import threading
 import sys
+import time
 
 
 
@@ -79,23 +82,35 @@ ps_aa = np.array([[600,0,-500],[300,0,-300],[300,0,-300],[300,0,-300]]) #AA same
 
 # TODO : fix this parameters
 
-class Finalnode:
+class Finalnode(Node):
     def __init__(self, mode=None):
         """
         Main function to initialize the node and retrieve calibration data from the ROS Parameter Server.
         """
         self.lock = threading.Lock()
-        rospy.init_node('calibration_user', anonymous=False)
+        super().__init__('calibration_user')
         self.initialized = False
-        self.pub = rospy.Publisher("/hand_joint_command", JointState, queue_size=1)
-        self.motor_pub = rospy.Publisher('/motor_values', Float64MultiArray, queue_size=1)
-        self.current_pub = rospy.Publisher('/current_state', Float32MultiArray, queue_size = 1)
-        self.recover = rospy.Subscriber('/recover', Int16, self.recovery)
+
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+
+        self.qos_profile = qos_profile
+
+        self.pub = self.create_publisher(JointState, "/hand_joint_command", qos_profile)
+        self.motor_pub = self.create_publisher(Float64MultiArray, '/motor_values', qos_profile)
+        self.current_pub = self.create_publisher(Float32MultiArray, '/current_state', qos_profile)
+
+        self.recover = self.create_subscription(Int16, '/recover', self.recovery, qos_profile)
         
         if mode == None:
             self.mode = "NN"
         elif mode == "base":
             self.mode = "base"
+        else:
+            self.mode = mode # Use actual passed mode
 
 
         try:
@@ -110,31 +125,58 @@ class Finalnode:
         self.AA_max_delta = 0.05
         self.collision_margin = 0.2
         self.joint_currents = np.zeros(NUM_JOINT,dtype=np.int16)
+        # __init__ 내부에 추가
+        self.declare_parameter('min_diff_threshold', 15.0) # 기본값 15.0 설정
 
         # Check if the calibration parameter exists and retrieve it
         print("mode : ",self.mode, ", submode : ",self.submode)        
         if self.mode == "base":
-            rospy.loginfo("Baseline mode")
-            self.sub = rospy.Subscriber('/baseline', Float32MultiArray, self.callback, queue_size = 1)
+            self.get_logger().info("Baseline mode")
+            self.sub = self.create_subscription(Float32MultiArray, '/baseline', self.callback, qos_profile)
 
-        elif rospy.has_param('calibration/recorded_points'):
-            self.cali_points = rospy.get_param('calibration/recorded_points')
-            self.sub = rospy.Subscriber('/model_out', Float32MultiArray, self.callback,queue_size = 1)
-            rospy.loginfo("Loaded calibration points: %s", self.cali_points)
-
-            self.init = np.array(self.cali_points[0])
-            self.extent = np.array(self.cali_points[1])
-            self.good  = np.array(self.cali_points[2])
-            self.thumb = np.array(self.cali_points[3])
-            self.sphere = np.array(self.cali_points[4])
         else:
-            rospy.logerr("Calibration points not found on the parameter server.")
-            self.disable_torque_all()
-            rospy.signal_shutdown("Calibration parameters missing")
-            return
+            # ROS 2 Parameter Declaration
+            # Assume parameters are loaded via YAML file
+            self.declare_parameter('calibration.recorded_points', rclpy.Parameter.Type.DOUBLE_ARRAY_ARRAY) # Or leave generic if structure is complex
+            
+            # Check if parameter exists (by checking if value is not None/Empty)
+            # Note: ROS 2 parameters need to be declared. Assuming launch file provides them.
+            try:
+                # Retrieve parameter
+                # Note: In ROS 2, nested lists might come in differently depending on YAML parser.
+                # Assuming standard list of lists structure.
+                param_value = self.get_parameter('calibration.recorded_points').value
+                
+                if param_value is not None and len(param_value) > 0:
+                    
+                    expected_rows = 5
+                    expected_cols = 8 
+                    
+                    if len(param_value) != (expected_rows * expected_cols):
+                         raise ValueError(f"Data size mismatch: Expected {expected_rows*expected_cols}, got {len(param_value)}")
 
+                    # Reshape: 1D List -> 2D Numpy Array
+                    self.cali_points = np.array(param_value).reshape(expected_rows, expected_cols)
+                    
+                    self.get_logger().info(f"Loaded calibration points:\n{self.cali_points}")
 
-        
+                    self.init   = self.cali_points[0]  # 1. still pose
+                    self.extent = self.cali_points[1]  # 2. extend pose
+                    self.good   = self.cali_points[2]  # 3. thumbs up pose
+                    self.thumb  = self.cali_points[3]  # 4. thumb bend pose
+                    self.sphere = self.cali_points[4]  # 5. sphere pose
+                    
+                    # Subscriber 생성
+                    self.sub = self.create_subscription(Float32MultiArray, '/model_out', self.callback, 1)
+
+                else:
+                    self.get_logger().warn("Calibration parameter is empty or None.")
+                    raise Exception("Empty Parameter")
+            except Exception as e:
+                self.get_logger().error(f"Calibration points not found or invalid: {e}")
+                self.disable_torque_all()
+                return
+
         self.initialized = True
 
 
@@ -200,7 +242,7 @@ class Finalnode:
             self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
             self.packetHandler.write2ByteTxRx(self.portHandler, i, ADDR_XL330_GOAL_CURRENT, 80)
 
-        rospy.sleep(3.0)
+        time.sleep(3.0)
 
         for i in DXL_ID_FE:
             self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_DISABLE)
@@ -221,7 +263,7 @@ class Finalnode:
     def callback(self, msg):
 
         if not self.initialized:
-            rospy.logwarn("Skipping callback: initialization not complete.")
+            self.get_logger().warn("Skipping callback: initialization not complete.")
             return
         # Convert incoming Float32MultiArray message to a NumPy array
         if self.mode != "base":
@@ -263,6 +305,7 @@ class Finalnode:
             # Publish JointState message (unchanged as requested)
             joint_8 = JointState()
             joint_8.header = Header()
+            joint_8.header.stamp = self.get_clock().now().to_msg() # Added timestamp
             if self.mode == "base":
                 combined = np.array(combined)
             joint_8.position = combined.tolist()
@@ -285,7 +328,7 @@ class Finalnode:
         diff = np.zeros(4)
         diff[0]  = self.sphere[0] - self.init[0]
         diff[1:] = self.extent[1:4] - self.init[1:4]
-        threshold = rospy.get_param('~min_diff_threshold', 15)
+        threshold = self.get_parameter('min_diff_threshold').value
         denom = np.where(np.abs(diff) < threshold,
                         np.sign(diff) * threshold,
                         diff)
@@ -304,15 +347,15 @@ class Finalnode:
         # Index vs Middle
         if aa[2] - aa[1] > margin:
             aa[1] = aa[2] - margin
-            rospy.logwarn("Index AA clipped to avoid collision")
+            self.get_logger().warn("Index AA clipped to avoid collision")
         # Ring vs Middle
         if aa[3] - aa[2] > margin:
             aa[3] = aa[2] + margin
-            rospy.logwarn("Ring AA clipped to avoid collision")
+            self.get_logger().warn("Ring AA clipped to avoid collision")
         return aa
     
     def joint_to_motor(self,q_pos):  # TODO : check the logic after param tuning
-        rospy.loginfo("motor callback")
+        # self.get_logger().info("motor callback")
         for i in range(4):
             desired_pos_fe[i] = init_fe[i] + int((ps_fe[i,2]-ps_fe[i,0]) * q_pos[i+4] * 0.7692 ) # 1 / 1.3
             desired_pos_aa[i] = init_aa[i] + int((ps_aa[i,2]-ps_aa[i,0]) * (q_pos[i]))      
@@ -368,8 +411,7 @@ class Finalnode:
             # Transmit packet
             result = self.groupSyncWrite.txPacket()
             if result != dxl.COMM_SUCCESS:
-                rospy.logerr("Dynamixel SyncWrite failed: %s",
-                            self.packetHandler.getTxRxResult(result))
+                self.get_logger().error(f"Dynamixel SyncWrite failed: {self.packetHandler.getTxRxResult(result)}")
             
     def read_current(self) :
         dxl_current_result = self.groupSyncRead_current.txRxPacket()
@@ -391,19 +433,21 @@ class Finalnode:
         """
         Disable torque on all Dynamixel motors. This method is called on node shutdown.
         """
-        rospy.loginfo("Shutting down: disabling torque on all motors.")
+        self.get_logger().info("Shutting down: disabling torque on all motors.")
         for i in DXL_ID:
             self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE, TORQUE_DISABLE)
             self.packetHandler.reboot(self.portHandler, i)
     
     def recovery(self, msg):
         # 1) Enter recovery mode: unsubscribe all callbacks
-        rospy.loginfo("[Recovery] start: unsubscribing callbacks")
-        self.sub.unregister()
-        self.recover.unregister()  # Temporarily unsubscribe from /recover topic as well
+        self.get_logger().info("[Recovery] start: unsubscribing callbacks")
+        if self.sub:
+            self.destroy_subscription(self.sub)
+        if self.recover:
+            self.destroy_subscription(self.recover)
 
         # 2) Reboot motors exclusively under lock; no other motor access should occur here
-        rospy.loginfo("[Recovery] rebooting motors under exclusive lock")
+        self.get_logger().info("[Recovery] rebooting motors under exclusive lock")
         with self.lock:
             dxl_current_result = self.groupSyncReadstatus.txRxPacket()
             for motor_id in DXL_ID:
@@ -414,19 +458,28 @@ class Finalnode:
                     
             self.disable_torque_all()
         # 3) Other operations (e.g., hardware initialization, subscriptions) proceed without touching motors
-        rospy.loginfo("[Recovery] performing non-motor operations")
+        self.get_logger().info("[Recovery] performing non-motor operations")
         # Reinitialize hardware interfaces (does not write to motors)
         self.__init_dxl()
 
         # 4) Recreate subscriptions and log completion
-        self.sub     = rospy.Subscriber('/model_out', Float32MultiArray, self.callback)
-        self.recover = rospy.Subscriber('/recover',   Int16,            self.recovery)
-        rospy.loginfo("[Recovery] complete: callbacks resumed")
+        if self.mode == "base":
+             self.sub = self.create_subscription(Float32MultiArray, '/baseline', self.callback, 1)
+        else:
+             self.sub = self.create_subscription(Float32MultiArray, '/model_out', self.callback, 1)
+        
+        self.recover = self.create_subscription(Int16, '/recover', self.recovery, self.qos_profile)
+        
+        
+        self.get_logger().info("[Recovery] complete: callbacks resumed")
+        
+        
 
 
 
 
-if __name__ == '__main__':
+def main(args=None):
+    rclpy.init(args=args)
     
     if len(sys.argv) > 1:
         mode = sys.argv[1]
@@ -434,11 +487,19 @@ if __name__ == '__main__':
         mode = None
     
     node = Finalnode(mode=mode)
+    
     try:
-        rospy.spin()
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
-        if node.mode !='sim':
+        if node.mode != 'sim':
             node.disable_torque_all()
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
 
     # node.disable_torque_all()
         

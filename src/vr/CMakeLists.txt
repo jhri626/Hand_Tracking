@@ -168,7 +168,7 @@ target_link_libraries(${PROJECT_NAME}_node
 
   "${CMAKE_SOURCE_DIR}/third_party/OpenXRProvider/OpenXRProvider/third_party/openxr_loader_windows/x64/lib/openxr_loader.lib"
   "${CMAKE_SOURCE_DIR}/third_party/OpenXRProvider2/openxr_provider/third_party/openxr/build/src/loader/Release/openxr_loader.lib"
-  "${CMAKE_SOURCE_DIR}/third_party/OpenXRProvider2/openxr_provider/lib/openxr_provider.lib"
+  "${CMAKE_SOURCE_DIR}/third_party/OpenXRProvider2/bin_prebuilt/openxr_provider/openxr_provider.lib"
   "${CMAKE_SOURCE_DIR}/third_party/OpenXRProvider/bin/OpenXRProvider.lib"
 
   opengl32.lib

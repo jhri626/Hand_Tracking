@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 """
-ROS 1 node for Skeleton2Mesh-based hand-angle inference (NumPy only).
+ROS 2 node for Skeleton2Mesh-based hand-angle inference (NumPy only).
 
 Flow:
-  PoseArray -> NumPy model (Skeleton2AngleNumPy) -> Float32MultiArray
-* No normalisation / denormalisation step.
-* Compatible with Python 2.7 (ROS Kinetic/Melodic).
+Flow:
+  HandSyncData -> NumPy model (Skeleton2AngleNumPy) -> Float32MultiArray
+* Compatible with Python 3 (ROS 2).
 """
 
-import rospy
+import rclpy
+from rclpy.node import Node
 import numpy as np
 from std_msgs.msg import Float32MultiArray
 from scipy.special import erf
@@ -158,18 +159,18 @@ class Skeleton2AngleNumPy(object):
 # --------------------------------------------------------------------------- #
 # ROS node wrapper
 # --------------------------------------------------------------------------- #
-class InferenceNode(object):
+class InferenceNode(Node):
     """ROS 1 node that embeds Skeleton2AngleNumPy and publishes 8-D predictions."""
     def __init__(self):
-        rospy.init_node('skeleton2angle_inference')
+        super().__init__('skeleton2angle_inference')
 
         # Load model
         try:
             self.model = Skeleton2AngleNumPy(MODEL_WEIGHTS_PATH)
-            rospy.loginfo('[OK] Loaded weights from %s', MODEL_WEIGHTS_PATH)
+            self.get_logger().info('✅ Loaded weights from %s' % MODEL_WEIGHTS_PATH)
         except Exception as e:
-            rospy.logerr('Model load failed: %s', e)
-            rospy.signal_shutdown('Cannot continue without weights')
+            self.get_logger().error('Model load failed: %s' % e)
+            self.model = None
             return
         
         # --- Butterworth filter design ----------------------------------
@@ -191,10 +192,14 @@ class InferenceNode(object):
         self.ema       = None  # stores previous EMA value, shape (1,8)
 
         # ROS I/O
-        self.pub = rospy.Publisher(OUTPUT_TOPIC, Float32MultiArray, queue_size=1)
-        self.pub_data = rospy.Publisher('/model_out_data', Float32MultiArray, queue_size=1)
-        rospy.Subscriber(INPUT_TOPIC, HandSyncData, self.callback)
-        rospy.loginfo('Node ready - waiting for %s', INPUT_TOPIC)
+        self.pub = self.create_publisher(Float32MultiArray, OUTPUT_TOPIC, 1)
+        self.pub_data = self.create_publisher(Float32MultiArray, '/model_out_data', 1)
+        self.subscription = self.create_subscription(
+            HandSyncData, 
+            INPUT_TOPIC,
+            self.callback,
+            1)
+        self.get_logger().info('Node ready - waiting for %s' % INPUT_TOPIC)
 
     # --------------------------------------------------------------------- #
     def _flatten_posearray(self, msg):
@@ -217,6 +222,11 @@ class InferenceNode(object):
 
     # --------------------------------------------------------------------- #
     def callback(self, msg):
+
+        if self.model is None:
+            self.get_logger().warn('Model not loaded, skipping inference.')
+            return
+        
         try:
             x_flat = self._flatten_posearray(msg.pose_array)[None, :]             # (1,60)
             extra = np.array(msg.angles[-3:], dtype=np.float32).reshape(1, 3)
@@ -224,7 +234,7 @@ class InferenceNode(object):
 
 
             if x_flat.shape[1] != NUM_JOINTS * 3 + 3:
-                rospy.logwarn('Unexpected input length %d', x_flat.shape[1])
+                self.get_logger().warn('Unexpected input length %d' % x_flat.shape[1])
                 return
 
             out = self.model.forward(x_flat)                           # (1,3)
@@ -257,13 +267,19 @@ class InferenceNode(object):
 
 
         except Exception as e:
-            rospy.logerr('Inference error: %s', e)
-
-    def spin(self):
-        rospy.spin()
+            self.get_logger().error('Inference error: %s' % e)
 
 # --------------------------------------------------------------------------- #
-if __name__ == '__main__':
+def main(args=None):
+    rclpy.init(args=args)
     node = InferenceNode()
-    if not rospy.is_shutdown():
-        node.spin()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()

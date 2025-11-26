@@ -17,7 +17,7 @@
 # limitations under the License.
 ################################################################################
 
-# Author: Ryu Woon Jung (Leon)
+# Author: Ryu Woon Jung (Leon), Wonho Yun
 
 BROADCAST_ID = 0xFE  # 254
 MAX_ID = 0xFC  # 252
@@ -29,14 +29,16 @@ INST_WRITE = 3
 INST_REG_WRITE = 4
 INST_ACTION = 5
 INST_FACTORY_RESET = 6
+INST_CLEAR = 16
 INST_SYNC_WRITE = 131  # 0x83
 INST_BULK_READ = 146  # 0x92
 # --- Only for 2.0 ---
-INST_REBOOT = 8   
-INST_CLEAR  = 16  #0x10
+INST_REBOOT = 8
 INST_STATUS = 85  # 0x55
 INST_SYNC_READ = 130  # 0x82
+INST_FAST_SYNC_READ = 138  # 0x8A
 INST_BULK_WRITE = 147  # 0x93
+INST_FAST_BULK_READ = 154  # 0x9A
 
 # Communication Result
 COMM_SUCCESS = 0  # tx or rx packet communication success

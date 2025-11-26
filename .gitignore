@@ -8,7 +8,6 @@ __pycache__/
 build/
 data/
 devel/
-.catkin_workspace
 others/
 *.pth
 *.csv
@@ -21,3 +20,5 @@ model/plot.ipynb
 *.png
 *.
 exp/
+install/
+log/

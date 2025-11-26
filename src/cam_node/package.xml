@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<package format="2">
+<package format="3">
   <name>cam_node</name>
   <version>0.0.0</version>
   <description>The cam_node package</description>
@@ -48,17 +48,15 @@
   <!--   <test_depend>gtest</test_depend> -->
   <!-- Use doc_depend for packages you need only for building documentation: -->
   <!--   <doc_depend>doxygen</doc_depend> -->
-  <buildtool_depend>catkin</buildtool_depend>
-  <build_depend>rospy</build_depend>
-  <exec_depend>rospy</exec_depend>
-  <build_depend>sensor_msgs</build_depend>
-  <exec_depend>sensor_msgs</exec_depend>
-  <build_depend>cv_bridge</build_depend>
-  <exec_depend>cv_bridge</exec_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  
+  <exec_depend>rclpy</exec_depend>
+  
+  <depend>sensor_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>opencv</depend> <depend>boost</depend> <export>
+    <build_type>ament_cmake</build_type>
 
-
-  <!-- The export tag contains other, unspecified, tags -->
-  <export>
     <!-- Other tools can request additional information be placed here -->
 
   </export>
