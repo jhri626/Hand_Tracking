@@ -5,6 +5,9 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from std_msgs.msg import Float32MultiArray, Float64MultiArray, Int16
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Header
+from rcl_interfaces.srv import GetParameters
+from rclpy.executors import SingleThreadedExecutor
+import threading
 import numpy as np
 import dynamixel_sdk as dxl 
 import threading
@@ -82,6 +85,23 @@ ps_aa = np.array([[600,0,-500],[300,0,-300],[300,0,-300],[300,0,-300]]) #AA same
 
 # TODO : fix this parameters
 
+
+def wait_for_future(node, future):
+    """Wait for a future to complete by spinning the node's executor."""
+    # 노드 인스턴스를 받아 해당 노드를 실행하는 Executor를 생성합니다.
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
+    
+    # 퓨처가 완료될 때까지 spin_once를 반복합니다.
+    while rclpy.ok():
+        executor.spin_once(timeout_sec=0.1)
+        if future.done():
+            break
+            
+    executor.remove_node(node)
+    # executor.shutdown() # shutdown은 호출하지 않고 메모리 해제만 유도
+    return future.result()
+
 class Finalnode(Node):
     def __init__(self, mode=None):
         """
@@ -135,17 +155,48 @@ class Finalnode(Node):
             self.sub = self.create_subscription(Float32MultiArray, '/baseline', self.callback, qos_profile)
 
         else:
-            # ROS 2 Parameter Declaration
-            # Assume parameters are loaded via YAML file
-            self.declare_parameter('calibration.recorded_points', rclpy.Parameter.Type.DOUBLE_ARRAY_ARRAY) # Or leave generic if structure is complex
             
-            # Check if parameter exists (by checking if value is not None/Empty)
-            # Note: ROS 2 parameters need to be declared. Assuming launch file provides them.
+            target_node_name = 'point_recorder'
+            target_param_name = 'calibration.recorded_points'
+
+            self.get_logger().info(f"Setting up client for {target_node_name}...")
+            
+            # 1. 파라미터 서비스 클라이언트 생성
+            # rclpy.parameter_client이 없으므로, 기본 서비스 인터페이스를 사용합니다.
+            self.param_client = self.create_client(
+                GetParameters,
+                f'{target_node_name}/get_parameters' # 서비스 이름 형식: /<node_name>/get_parameters
+            )
+
+            self.get_logger().info(f"Waiting for service '{target_node_name}/get_parameters'...")
+            
+            # 2. 서비스가 뜰 때까지 대기 (5초 타임아웃)
+            if not self.param_client.wait_for_service(timeout_sec=5.0):
+                self.get_logger().error(f"Parameter service for {target_node_name} not available.")
+                self.disable_torque_all()
+                return
+
+            # 3. 비동기 요청 메시지 생성 및 전송
+            request = GetParameters.Request()
+            request.names = [target_param_name]
+            
+            self.get_logger().info(f"Requesting parameter '{target_param_name}'...")
+
+            # 비동기 호출 및 퓨처 객체 획득
+            future = self.param_client.call_async(request)
+
+            # 4. 헬퍼 함수를 사용하여 퓨처가 완료될 때까지 동기적으로 대기
+            response = wait_for_future(self, future)
+            
+            param_value = None
+            if response.values and response.values[0].type != 0: # 0: UNINITIALIZED
+                # rcl_interfaces.msg.ParameterValue에서 값 추출
+                param_value = response.values[0].double_array_value
+
             try:
                 # Retrieve parameter
                 # Note: In ROS 2, nested lists might come in differently depending on YAML parser.
                 # Assuming standard list of lists structure.
-                param_value = self.get_parameter('calibration.recorded_points').value
                 
                 if param_value is not None and len(param_value) > 0:
                     
@@ -275,12 +326,12 @@ class Finalnode(Node):
             aa = self.compute_aa(raw_data)
 
             # Apply rate limiting (delta clamp) to FE and AA
-            # fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
-            # aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
+            fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
+            aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
 
             ############################### temporal for experiment########################
-            fe_adjusted = fe
-            aa_adjusted = aa
+            # fe_adjusted = fe
+            # aa_adjusted = aa
             ###############################################################################
 
             # Update previous state for next iteration
@@ -288,7 +339,7 @@ class Finalnode(Node):
             self.AA_prev = aa_adjusted.copy()
 
             # Apply finger-collision avoidance adjustments to AA
-            # aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
+            aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
             combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
             
         elif self.mode == "base":
@@ -309,7 +360,6 @@ class Finalnode(Node):
             if self.mode == "base":
                 combined = np.array(combined)
             joint_8.position = combined.tolist()
-
             self.pub.publish(joint_8)
         
         
@@ -333,7 +383,7 @@ class Finalnode(Node):
                         np.sign(diff) * threshold,
                         diff)
         ratio = (raw[:4] - self.init[:4]) / np.abs(denom)
-        return 0.36 * np.sign(ratio) * ratio
+        return 0.36 * ratio
 
     @staticmethod
     def apply_delta_clamp(values, prev, max_delta):

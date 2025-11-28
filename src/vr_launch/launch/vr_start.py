@@ -43,7 +43,7 @@ def generate_launch_description():
         Node(
             package=None,
             executable=sys.executable,
-            arguments=[get_py_path('point_recorder', 'point_recorder.py')],
+            arguments=['-u', get_py_path('point_recorder', 'point_recorder.py')],
             name='point_recorder',
             output='screen'
         ),

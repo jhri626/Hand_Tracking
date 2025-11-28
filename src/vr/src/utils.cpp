@@ -118,3 +118,114 @@ void transformPoseArrayToBase(geometry_msgs::msg::PoseArray& poses)
         p.position.z = pt_trans(2);
     }
 }
+
+
+
+void transformHMDtoRobot(geometry_msgs::msg::TransformStamped& tfMsg, bool is_hmd, bool is_hand)
+{
+    Eigen::Quaterniond q = {tfMsg.transform.rotation.w ,tfMsg.transform.rotation.x, tfMsg.transform.rotation.y, tfMsg.transform.rotation.z};
+    Eigen::Matrix3d R = q.toRotationMatrix();
+    Eigen::Vector3d t = {tfMsg.transform.translation.x, tfMsg.transform.translation.y , tfMsg.transform.translation.z};
+
+    Eigen::Matrix3d R_new;
+    Eigen::Vector3d t_new; 
+
+    bool is_tracker = true;
+
+    if (is_hmd)
+    {
+        Eigen::Matrix4d T_BH = Eigen::Matrix4d::Identity();
+        T_BH.block<3,3>(0,0) = R;
+        T_BH.block<3,1>(0,3) = t;
+
+        Eigen::Matrix4d T_controlWorld2World;
+        T_controlWorld2World <<
+            0.0, 0.0, -1.0, 0.0,
+            -1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 1.0;
+
+
+
+        Eigen::Matrix4d T_HR;
+        T_HR <<
+            0.0, -1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            -1.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 1.0;
+        // T_HR <<
+        //     1.0, 0.0, 0.0, 0.0,
+        //     0.0, 1.0, 0.0, 0.0,
+        //     0.0, 0.0, 1.0, 0.0,
+        //     0.0, 0.0, 0.0, 1.0;
+
+        Eigen::Matrix4d T_BR = T_controlWorld2World * T_BH * T_HR;
+
+        R_new = T_BR.block<3,3>(0,0);
+        t_new = T_BR.block<3,1>(0,3);
+
+        is_tracker = false;
+        
+    }
+    else
+    {
+        Eigen::Matrix4d T_HT = Eigen::Matrix4d::Identity();
+        T_HT.block<3,3>(0,0) = R;
+        T_HT.block<3,1>(0,3) = t;
+
+        Eigen::Matrix4d T_RH;
+        T_RH <<
+            0.0, 0.0, -1.0, 0.0,
+            -1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 1.0;  // homogeneous last row
+        // T_RH <<
+        //     1.0, 0.0, 0.0, 0.0,
+        //     0.0, 1.0, 0.0, 0.0,
+        //     0.0, 0.0, 1.0, 0.0,
+        //     0.0, 0.0, 0.0, 1.0;  // homogeneous last row
+
+        Eigen::Matrix4d T_RT = T_RH * T_HT;
+
+        R_new = T_RT.block<3,3>(0,0);
+        t_new = T_RT.block<3,1>(0,3);
+        
+    }
+    
+    if (is_hand)
+    {
+        Eigen::Matrix3d R_rot;
+        R_rot <<
+            0.0, -1.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0;
+
+        // R_rot <<
+        //     1.0, 0.0, 0.0,
+        //     0.0, 1.0, 0.0,
+        //     0.0, 0.0, 1.0;
+        R_new = R_new * R_rot;
+        is_tracker = false;
+    }
+    else if(is_tracker)
+    {
+        Eigen::Matrix3d R_rot;
+        R_rot <<
+            0.0, -1.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0;
+        R_new = R_new * R_rot;
+        
+    }
+    Eigen::Quaterniond q_new(R_new);
+    tfMsg.transform.rotation.x = q_new.x();
+    tfMsg.transform.rotation.y = q_new.y();
+    tfMsg.transform.rotation.z = q_new.z();
+    tfMsg.transform.rotation.w = q_new.w();
+
+    tfMsg.transform.translation.x = t_new.x();
+    tfMsg.transform.translation.y = t_new.y();
+    tfMsg.transform.translation.z = t_new.z();
+    
+    
+}

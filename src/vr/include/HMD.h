@@ -70,7 +70,7 @@ public:
                          std::vector<XrSwapchainImageOpenGLKHR>& outImages);
     bool InitAllSwapchains();
 
-    void processFrameIteration();
+    bool processFrameIteration();
     bool waitAndBeginFrame(XrFrameState& outState);
     void publishHMDPose(const rclcpp::Time& stamp);
     void locateHandJoints();
@@ -135,15 +135,16 @@ private:
     bool                              bDrawHandJoints{ false };
 
     // Multiple tracker support
-    static const int MAX_TRACKERS = 2;
+    static const int MAX_TRACKERS = 3;
 
     // Paths for each tracker role
     std::vector<std::string> trackerRoleStrings = {
-        // "/user/vive_tracker_htcx/role/chest",
-        "/user/vive_tracker_htcx/role/left_foot",
-        "/user/vive_tracker_htcx/role/right_foot",
-        // "/user/vive_tracker_htcx/role/left_shoulder",
-        // "/user/vive_tracker_htcx/role/right_shoulder",
+        
+        // "/user/vive_tracker_htcx/role/left_foot",
+        // "/user/vive_tracker_htcx/role/right_foot",
+        "/user/vive_tracker_htcx/role/left_shoulder",
+        "/user/vive_tracker_htcx/role/right_shoulder",
+        "/user/vive_tracker_htcx/role/chest",
         // "/user/vive_tracker_htcx/role/waist",
         // "/user/vive_tracker_htcx/role/left_knee",
         // "/user/vive_tracker_htcx/role/right_knee"
@@ -178,6 +179,8 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr      image_sub;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr current_sub;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster;
+
+    geometry_msgs::msg::Pose p_hand;
     geometry_msgs::msg::PoseArray pose_array;
     std_msgs::msg::Float32MultiArray angle_array;
     std_msgs::msg::Float32MultiArray data_array;

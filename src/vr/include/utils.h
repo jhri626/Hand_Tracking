@@ -7,6 +7,7 @@
 #include <Eigen/Geometry>
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_array.hpp>
+#include <tf2_ros/transform_broadcaster.h>
 
 /// @brief Window procedure callback for handling basic Win32 messages.
 /// @param hWnd Handle to the window.
@@ -28,6 +29,7 @@ Eigen::Vector3d getPositionfromPose(const geometry_msgs::msg::Pose& pose);
 Eigen::Quaterniond getQuaternionfromArray(const geometry_msgs::msg::PoseArray& poses, size_t idx);
 Eigen::Quaterniond getQuaternionfromPose(const geometry_msgs::msg::Pose& pose);
 void transformPoseArrayToBase(geometry_msgs::msg::PoseArray& poses);
+void transformHMDtoRobot(geometry_msgs::msg::TransformStamped& tf, bool is_hmd, bool is_hand);
 
 template <size_t N>
 std::array<geometry_msgs::msg::Pose, N> selectPoses(

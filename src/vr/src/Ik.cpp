@@ -90,9 +90,9 @@ namespace ik {
 
 
 
-        pub->publish(vectorToArrowMarker(p_ref,proxi,"hmd_frame","v1",3,1,0,0));
+        pub->publish(vectorToArrowMarker(p_ref,proxi,"hmd","v1",3,1,0,0));
             // std::cout<<"p_ref"<<p_ref<<std::endl;
-        pub->publish(vectorToArrowMarker(p_ref+proxi,newproxi-proxi,"hmd_frame","v1",4,0,1,0));
+        pub->publish(vectorToArrowMarker(p_ref+proxi,newproxi-proxi,"hmd","v1",4,0,1,0));
 
         return Eigen::Vector2d(theta[0], theta[1]);
         
@@ -216,10 +216,10 @@ namespace ik {
     //         // Eigen::Vector3d proxi_2 = lie_utils::Matexp3(lie_utils::vecToso3(y),0) * lie_utils::Matexp3(lie_utils::vecToso3(-x),0) * proxi;
     
     //         // std::cout<<L2<<" "<<(new_proxi-proxi).norm()<<std::endl;
-    //         pub.publish(vectorToArrowMarker(p_ref,proxi,"hmd_frame","v1",3,1,0,0));
+    //         pub.publish(vectorToArrowMarker(p_ref,proxi,"hmd","v1",3,1,0,0));
     //         // std::cout<<"p_ref"<<p_ref<<std::endl;
-    //         pub.publish(vectorToArrowMarker(p_ref+proxi,new_proxi-proxi,"hmd_frame","v1",4,0,1,0));
-    //         // pub.publish(vectorToArrowMarker(p_ref,proxi_2,"hmd_frame","v1",5,0,0,1));
+    //         pub.publish(vectorToArrowMarker(p_ref+proxi,new_proxi-proxi,"hmd","v1",4,0,1,0));
+    //         // pub.publish(vectorToArrowMarker(p_ref,proxi_2,"hmd","v1",5,0,0,1));
     //         return Eigen::Vector3d(theta[0] , theta[1], theta[2]);
     //     }
     //     // std::cout<<"work?"<<std::endl;e

@@ -14,28 +14,42 @@
 #include "lie_utils.h"
 
 
-void HMD::processFrameIteration() {
+bool HMD::processFrameIteration() {
 
-    
+    // XrSpace startHandle = hmdSpace;
     XrFrameState frameState{ XR_TYPE_FRAME_STATE };
     if (!waitAndBeginFrame(frameState)) {
-        return;
+        return false;
     }
 
     UpdateAllTrackers();
+
+    // if (hmdSpace != startHandle) {
+    //     std::cerr << "[CRITICAL WARNING] hmdSpace changed after UpdateAllTrackers!" << std::endl;
+    //     std::cerr << "  Old: " << (void*)startHandle << " -> New: " << (void*)hmdSpace << std::endl;
+    // }
 
     rclcpp::Time now = node_->now();
     publishHMDPose(now);
     locateHandJoints();
     bool valid = updatePoseArray(now);
-    if (valid) leftHandToRightHand(pose_array);
+    // if (valid) leftHandToRightHand(pose_array);
     computeJointAngles(now);
     renderAndSubmitFrame(frameState);
+
+    return true;
+
+    // std::cerr << "[Check End]   hmdSpace Handle: " << (void*)hmdSpace << std::endl;
+
+    // if (hmdSpace != startHandle) {
+    //      std::cerr << "[CRITICAL ERROR] hmdSpace is unstable!" << std::endl;
+    // }
 }
 
 
 bool HMD::waitAndBeginFrame(XrFrameState& outState) {
     // Wait for the next frame
+    if (!rclcpp::ok()) return false;
     XrFrameWaitInfo waitInfo{ XR_TYPE_FRAME_WAIT_INFO };
     if (XR_FAILED(xrWaitFrame(xrSession, &waitInfo, &outState))) {
         std::cerr << "[error] xrWaitFrame failed\n";
@@ -61,7 +75,8 @@ void HMD::publishHMDPose(const rclcpp::Time& stamp) {
 
         tfMsg.header.stamp    = stamp;
         tfMsg.header.frame_id = "world";
-        tfMsg.child_frame_id  = "hmd_frame";
+        tfMsg.child_frame_id  = "hmd";
+        
 
         // Copy position
         tfMsg.transform.translation.x = loc.pose.position.x;
@@ -69,10 +84,13 @@ void HMD::publishHMDPose(const rclcpp::Time& stamp) {
         tfMsg.transform.translation.z = loc.pose.position.z;
 
         // Copy orientation
+
         tfMsg.transform.rotation.x = loc.pose.orientation.x;
         tfMsg.transform.rotation.y = loc.pose.orientation.y;
         tfMsg.transform.rotation.z = loc.pose.orientation.z;
         tfMsg.transform.rotation.w = loc.pose.orientation.w;
+
+        transformHMDtoRobot(tfMsg, true, false);
         
 
         tf_broadcaster->sendTransform(tfMsg);
@@ -97,7 +115,7 @@ void HMD::locateHandJoints() {
 bool HMD::updatePoseArray(const rclcpp::Time& stamp) {
     // Initialize header
     pose_array.header.stamp    = stamp;
-    pose_array.header.frame_id = "hmd_frame";
+    pose_array.header.frame_id = "hmd";
 
     const size_t n = kSpecificIndices.size();
     bool tracking_valid = true;
@@ -113,20 +131,43 @@ bool HMD::updatePoseArray(const rclcpp::Time& stamp) {
         if ((leftLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) ||
             (leftLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
             
-            geometry_msgs::msg::Pose p;
-            p.position.x = leftLoc.pose.position.x;
-            p.position.y = leftLoc.pose.position.y;
-            p.position.z = leftLoc.pose.position.z;
-            
-            p.orientation.x = leftLoc.pose.orientation.x; 
-            p.orientation.y = leftLoc.pose.orientation.y;
-            p.orientation.z = leftLoc.pose.orientation.z;
-            p.orientation.w = leftLoc.pose.orientation.w;
-            pose_array.poses[i] = p;
-         
-            // std::cout<<pose_array.poses[i]<<std::endl;
+                geometry_msgs::msg::Pose p;
+                p.position.x = leftLoc.pose.position.x;
+                p.position.y = leftLoc.pose.position.y;
+                p.position.z = leftLoc.pose.position.z;
+                
+                p.orientation.x = leftLoc.pose.orientation.x; 
+                p.orientation.y = leftLoc.pose.orientation.y;
+                p.orientation.z = leftLoc.pose.orientation.z;
+                p.orientation.w = leftLoc.pose.orientation.w;
+                // pose_array.poses[i] = p;
+
+                if (jointIdx == XR_HAND_JOINT_PALM_EXT)
+                {
+                    p_hand = p;
+                }   
         }
-        else tracking_valid = false;
+
+        if (jointIdx == XR_HAND_JOINT_PALM_EXT)
+            {
+                geometry_msgs::msg::TransformStamped tfMsg;
+                    tfMsg.header.stamp = stamp;
+                    tfMsg.header.frame_id = "hmd";
+                    tfMsg.child_frame_id = "l_hand";
+
+                    tfMsg.transform.translation.x = p_hand.position.x;
+                    tfMsg.transform.translation.y = p_hand.position.y;
+                    tfMsg.transform.translation.z = p_hand.position.z;
+                    tfMsg.transform.rotation.x = p_hand.orientation.x;
+                    tfMsg.transform.rotation.y = p_hand.orientation.y;
+                    tfMsg.transform.rotation.z = p_hand.orientation.z;
+                    tfMsg.transform.rotation.w = p_hand.orientation.w;
+
+                    transformHMDtoRobot(tfMsg, false, true);
+
+                    tf_broadcaster->sendTransform(tfMsg);
+            }
+        // else tracking_valid = false;
 
         if ((rightLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) &&
             (rightLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
@@ -140,9 +181,30 @@ bool HMD::updatePoseArray(const rclcpp::Time& stamp) {
             p.orientation.y = rightLoc.pose.orientation.y;
             p.orientation.z = rightLoc.pose.orientation.z;
             p.orientation.w = rightLoc.pose.orientation.w;
-            // pose_array.poses[i] = p;
-            
+            pose_array.poses[i] = p;            
         }
+
+        if (jointIdx == XR_HAND_JOINT_PALM_EXT)
+            {
+                geometry_msgs::msg::Pose p;
+                p = pose_array.poses[jointIdx];
+
+                geometry_msgs::msg::TransformStamped tfMsg;
+                    tfMsg.header.stamp = stamp;
+                    tfMsg.header.frame_id = "hmd";
+                    tfMsg.child_frame_id = "r_hand";
+
+                    tfMsg.transform.translation.x = p.position.x;
+                    tfMsg.transform.translation.y = p.position.y;
+                    tfMsg.transform.translation.z = p.position.z;
+                    tfMsg.transform.rotation.x = p.orientation.x;
+                    tfMsg.transform.rotation.y = p.orientation.y;
+                    tfMsg.transform.rotation.z = p.orientation.z;
+                    tfMsg.transform.rotation.w = p.orientation.w;
+                    transformHMDtoRobot(tfMsg, false, true);
+
+                    tf_broadcaster->sendTransform(tfMsg);
+            }
     }
 
     return tracking_valid;
@@ -370,10 +432,10 @@ void HMD::computeJointAngles(const rclcpp::Time& stamp) {
 
     vr::msg::HandSyncData sync_msg;
     sync_msg.header.stamp = stamp;
-    sync_msg.header.frame_id = "hmd_frame";
+    sync_msg.header.frame_id = "hmd";
     sync_msg.pose_array = network_input;
     sync_msg.pose_array.header.stamp = stamp;
-    sync_msg.pose_array.header.frame_id = "hmd_frame";
+    sync_msg.pose_array.header.frame_id = "hmd";
     sync_msg.angles = latest_angles;
     sync_msg.trigger_flag = checkUserInput();
     
@@ -553,15 +615,7 @@ void HMD::UpdateAllTrackers()
     syncInfo.activeActionSets = &active;
     xrSyncActions(xrSession, &syncInfo);
 
-    // 2) Prepare PoseArray for ROS publish
-    geometry_msgs::msg::PoseArray trackerArray;
-    trackerArray.header.stamp = node_->now();
-    trackerArray.header.frame_id = "world";
-    trackerArray.poses.resize(trackerCount);
-
-    // std::cerr << "update" << trackerCount ;
-
-    // 3) Vector for jobs
+    // 2) Vector for jobs
     std::vector<std::future<void>> jobs;
     jobs.reserve(trackerCount);
 
@@ -574,7 +628,7 @@ void HMD::UpdateAllTrackers()
                 XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
 
                 XrResult res =  xrLocateSpace(trackerSpaces[i],
-                              worldSpace,
+                              hmdSpace,
                               xrTime,
                               &loc);
                 
@@ -585,36 +639,54 @@ void HMD::UpdateAllTrackers()
                 bool posValid = loc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT;
                 bool oriValid = loc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
 
-                geometry_msgs::msg::Pose p;
+                geometry_msgs::msg::TransformStamped tfMsg;
+                tfMsg.header.stamp = node_->now();
+                tfMsg.header.frame_id = "hmd";
+                
+                switch(i)
+                {
+                    case 0: 
+                        tfMsg.child_frame_id = "l_elbo";
+                        break;
+                    case 1:
+                        tfMsg.child_frame_id = "r_elbo";
+                        break;
+                    case 2:
+                        tfMsg.child_frame_id = "back";
+                        break;
+                    default:
+                        tfMsg.child_frame_id = "tracker_" + std::to_string(i);
+                }
 
                 // std::cout << "pos :" << posValid <<", ori :"<< oriValid<<std::endl;
 
                 if (posValid && oriValid) {
-                    p.position.x = loc.pose.position.x;
-                    p.position.y = loc.pose.position.y;
-                    p.position.z = loc.pose.position.z;
+                    tfMsg.transform.translation.x = loc.pose.position.x;
+                    tfMsg.transform.translation.y = loc.pose.position.y;
+                    tfMsg.transform.translation.z = loc.pose.position.z;
 
-                    p.orientation.x = loc.pose.orientation.x;
-                    p.orientation.y = loc.pose.orientation.y;
-                    p.orientation.z = loc.pose.orientation.z;
-                    p.orientation.w = loc.pose.orientation.w;
+                    tfMsg.transform.rotation.x = loc.pose.orientation.x;
+                    tfMsg.transform.rotation.y = loc.pose.orientation.y;
+                    tfMsg.transform.rotation.z = loc.pose.orientation.z;
+                    tfMsg.transform.rotation.w = loc.pose.orientation.w;
                 } else {
-                    // Invalid → identity pose
-                    p.position.x = p.position.y = p.position.z = 0.0;
-                    p.orientation.x = p.orientation.y = p.orientation.z = 0.0;
-                    p.orientation.w = 1.0;
+                    tfMsg.transform.translation.x = 0;
+                    tfMsg.transform.translation.y = 0;
+                    tfMsg.transform.translation.z = 0;
+                    tfMsg.transform.rotation.x = 0;
+                    tfMsg.transform.rotation.y = 0;
+                    tfMsg.transform.rotation.z = 0;
+                    tfMsg.transform.rotation.w = 1;
                 }
+                transformHMDtoRobot(tfMsg, false, false);
+                tf_broadcaster->sendTransform(tfMsg);
 
                 // Write into trackerArray
                 // This write is safe because each thread writes to a unique index
-                trackerArray.poses[i] = p;
             })
         );
     }
 
     // 5) Wait for all threads to finish
     for (auto& j : jobs) j.get();
-
-    // 6) Publish once
-    tracker_pose_pub->publish(trackerArray);
 }

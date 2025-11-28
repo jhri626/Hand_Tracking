@@ -76,7 +76,7 @@ class PointRecorder(Node):
         if not msg.data:
             return
 
-
+        # print(list(msg.data))
         self.get_logger().info(f"Updated latest_angles: {list(msg.data)}"        )
         # Only store data if the service has requested collection
         if self.is_collecting:

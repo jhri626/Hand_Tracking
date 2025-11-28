@@ -162,9 +162,12 @@ void HMD::rospublish()
 
     while (rclcpp::ok()) {
     rclcpp::spin_some(node_);
-    processFrameIteration();
+    if(!processFrameIteration())
+    {
+        break;
+    }
     loop_rate.sleep();
-}
+    }
     
     delete pXRHandTracking;
     std::cout<<"break finish"<<std::endl;
