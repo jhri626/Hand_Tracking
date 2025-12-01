@@ -2,7 +2,7 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-from std_msgs.msg import Float32MultiArray, Float64MultiArray, Int16
+from std_msgs.msg import Float32MultiArray, Float64MultiArray, Int16, Int32MultiArray
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Header
 from rcl_interfaces.srv import GetParameters
@@ -43,15 +43,15 @@ EXTENDED_POSITION_CONTROL_MODE  = 4
 # Protocol version
 PROTOCOL_VERSION            = 2    
 
-DXL_ID = [11,12,21,22,31,32,41,42]
-DXL_ID_FE = [12,22,32,42]
-DXL_ID_AA = [11,21,31,41]
+DXL_ID = [31,32,33,34,35,36,37,38]
+DXL_ID_FE = [32,34,36,38]
+DXL_ID_AA = [31,33,35,37]
 CurLimit_FE = [450, 700, 450, 450]
 CurLimit_AA = [400, 400, 400, 400]
 CurLimit = CurLimit_AA + CurLimit_FE
 
-BAUDRATE                    = 3000000
-DEVICENAME                  = "COM9" #.encode('utf-8')        # Check which port is being used on your controller
+BAUDRATE                    = 4000000
+DEVICENAME                  = "/dev/ttyUSB0" #.encode('utf-8')        # Check which port is being used on your controller
                                                         # ex) Windows: "COM1"   Linux: "/dev/ttyUSB0"
 
 TORQUE_ENABLE               = 1                             # Value for enabling the torque
@@ -120,7 +120,7 @@ class Finalnode(Node):
         self.qos_profile = qos_profile
 
         self.pub = self.create_publisher(JointState, "/hand_joint_command", qos_profile)
-        self.motor_pub = self.create_publisher(Float64MultiArray, '/motor_values', qos_profile)
+        self.motor_pub = self.create_publisher(Float32MultiArray, '/motor_values', qos_profile)
         self.current_pub = self.create_publisher(Float32MultiArray, '/current_state', qos_profile)
 
         self.recover = self.create_subscription(Int16, '/recover', self.recovery, qos_profile)
@@ -148,11 +148,13 @@ class Finalnode(Node):
         # __init__ 내부에 추가
         self.declare_parameter('min_diff_threshold', 15.0) # 기본값 15.0 설정
 
+
+    def get_parameter_from_server(self):
         # Check if the calibration parameter exists and retrieve it
         print("mode : ",self.mode, ", submode : ",self.submode)        
         if self.mode == "base":
             self.get_logger().info("Baseline mode")
-            self.sub = self.create_subscription(Float32MultiArray, '/baseline', self.callback, qos_profile)
+            self.sub = self.create_subscription(Float32MultiArray, '/baseline', self.callback, self.qos_profile)
 
         else:
             
@@ -183,11 +185,12 @@ class Finalnode(Node):
             self.get_logger().info(f"Requesting parameter '{target_param_name}'...")
 
             # 비동기 호출 및 퓨처 객체 획득
+            # print("request")
             future = self.param_client.call_async(request)
 
             # 4. 헬퍼 함수를 사용하여 퓨처가 완료될 때까지 동기적으로 대기
             response = wait_for_future(self, future)
-            
+            # print("response")
             param_value = None
             if response.values and response.values[0].type != 0: # 0: UNINITIALIZED
                 # rcl_interfaces.msg.ParameterValue에서 값 추출
@@ -218,6 +221,7 @@ class Finalnode(Node):
                     self.sphere = self.cali_points[4]  # 5. sphere pose
                     
                     # Subscriber 생성
+                    # print("subcribe")
                     self.sub = self.create_subscription(Float32MultiArray, '/model_out', self.callback, 1)
 
                 else:
@@ -302,6 +306,7 @@ class Finalnode(Node):
 
         for i in range(4) :
             init_fe[i] = self.packetHandler.read4ByteTxRx(self.portHandler, DXL_ID_FE[i],ADDR_XL330_PRESENT_POSITION)[0]
+        # print("init fe", init_fe)
 		
         # FE joint Torque off and Change Operating Mode
         for i in DXL_ID_FE:
@@ -341,7 +346,7 @@ class Finalnode(Node):
             # Apply finger-collision avoidance adjustments to AA
             aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
             combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
-            
+            # print(combined)
         elif self.mode == "base":
             combined = msg.data
 
@@ -351,7 +356,11 @@ class Finalnode(Node):
             motor_value = self.joint_to_motor(combined)
             self.read_current()
             self.send_to_motors(motor_value)
-            self.motor_pub.publish(motor_value)
+            int_data = motor_value.data
+            motor_value_float = [float(val) for val in int_data]
+            motor_float = Float32MultiArray()
+            motor_float.data = motor_value_float
+            self.motor_pub.publish(motor_float)
         elif self.submode == "sim":
             # Publish JointState message (unchanged as requested)
             joint_8 = JointState()
@@ -362,8 +371,6 @@ class Finalnode(Node):
             joint_8.position = combined.tolist()
             self.pub.publish(joint_8)
         
-        
-
         
     def compute_fe(self, raw):
         """Compute flexion/extension values from raw sensor data."""
@@ -411,9 +418,9 @@ class Finalnode(Node):
             desired_pos_aa[i] = init_aa[i] + int((ps_aa[i,2]-ps_aa[i,0]) * (q_pos[i]))      
 
         if q_pos[0] > 0:    
-            desired_pos_aa[0] = init_aa[0] + ps_aa[0,1] + 2 * int((ps_aa[0,2]-ps_aa[0,1]) * (q_pos[0]))
+            desired_pos_aa[0] = init_aa[0] + int(ps_aa[0,1]) + 2 * int((ps_aa[0,2]-ps_aa[0,1]) * (q_pos[0]))
         elif q_pos[0] < 0:
-            desired_pos_aa[0] = init_aa[0] + ps_aa[0,1] + 2 * int((ps_aa[0,1]-ps_aa[0,0]) * (q_pos[0]))
+            desired_pos_aa[0] = init_aa[0] + int(ps_aa[0,1]) + 2 * int((ps_aa[0,1]-ps_aa[0,0]) * (q_pos[0]))
 
         for i in range(4):
             if desired_pos_fe[i] < init_fe[i] :
@@ -421,10 +428,9 @@ class Finalnode(Node):
             elif desired_pos_fe[i] > (init_fe[i] +4400) :
                 desired_pos_fe[i] = (init_fe[i] +4400)
         
-        motor_values = Float64MultiArray()
+        motor_values = Int32MultiArray()
+        
         motor_values.data = desired_pos_aa + desired_pos_fe
-
-        print(q_pos)
         
         return motor_values
     
@@ -470,12 +476,13 @@ class Finalnode(Node):
             self.joint_currents[i] = self.groupSyncRead_current.getData(DXL_ID_AA[i], PRESENT_CURRENT, 2)
         for i in range(4) :
             self.joint_currents[i+4] = self.groupSyncRead_current.getData(DXL_ID_FE[i], PRESENT_CURRENT, 2)
-        msg= Float32MultiArray()
+        msg = Float32MultiArray()
         #msg= Int64MultiArray()
         # print(self.joint_currents)
         currents_float = self.joint_currents.astype(np.float32)
         current_stat = currents_float / np.array(CurLimit)
-        msg.data = current_stat
+        
+        msg.data = current_stat.tolist()
         # print("topic",current_stat)
         self.current_pub.publish(msg)
     
@@ -483,10 +490,17 @@ class Finalnode(Node):
         """
         Disable torque on all Dynamixel motors. This method is called on node shutdown.
         """
+        if self.submode == 'sim' or not hasattr(self,'portHandler'):
+            return
+        
         self.get_logger().info("Shutting down: disabling torque on all motors.")
-        for i in DXL_ID:
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE, TORQUE_DISABLE)
-            self.packetHandler.reboot(self.portHandler, i)
+        
+        try:
+            for i in DXL_ID:
+                self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE, TORQUE_DISABLE)
+                # self.packetHandler.reboot(self.portHandler, i)
+        except Exception as e:
+            self.get_logger().error(f"Failed to disable torque :{e}")
     
     def recovery(self, msg):
         # 1) Enter recovery mode: unsubscribe all callbacks
@@ -523,10 +537,6 @@ class Finalnode(Node):
         
         self.get_logger().info("[Recovery] complete: callbacks resumed")
         
-        
-
-
-
 
 def main(args=None):
     rclpy.init(args=args)
@@ -539,10 +549,13 @@ def main(args=None):
     node = Finalnode(mode=mode)
     
     try:
+        node.get_parameter_from_server()
         rclpy.spin(node)
     except KeyboardInterrupt:
-        pass
+        print("shutdown by user")
     finally:
+        print("shutdown")
+        # print(e)
         if node.mode != 'sim':
             node.disable_torque_all()
         node.destroy_node()
