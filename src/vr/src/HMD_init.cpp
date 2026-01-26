@@ -1,3 +1,10 @@
+/**
+ * HMD_init.cpp
+ * Initializes OpenXR session, OpenGL context, and VR tracking components for HMD and Vive trackers.
+ * Handles system setup, reference spaces, swapchains, and action binding for VR hand tracking application.
+ */
+
+
 #define XR_EXTENSION_PROTOTYPES
 #include "HMD.h"
 #include <Windows.h>
@@ -12,7 +19,10 @@
 
 
 
-
+/**
+ * Initializes the OpenXR system for head-mounted display.
+ * Retrieves and validates the system ID required for subsequent OpenXR operations.
+ */
 bool HMD::initSystem() 
 {
     // Prepare the system information structure for a head-mounted display.
@@ -34,7 +44,10 @@ bool HMD::initSystem()
     return true;
 }
 
-
+/**
+ * Initializes OpenGL context with Windows-specific setup.
+ * Creates rendering window, device context, and OpenGL rendering context for VR rendering.
+ */
 bool HMD::initOpenGL() {
     // If the window does not exist, create it.
     if (!hWnd && !CreateRenderWindow(hWnd)) {
@@ -87,6 +100,11 @@ bool HMD::initOpenGL() {
     return true;
 }
 
+
+/**
+ * Creates OpenXR instance and session with required extensions.
+ * Sets up hand tracking, Vive tracker interaction, and OpenGL bindings for the VR application.
+ */
 bool HMD::CreateOpenXRInstanceAndSession() {
     // List of required extension names.
     const char* extensionNames[] = {
@@ -200,6 +218,11 @@ bool HMD::CreateOpenXRInstanceAndSession() {
     return true;
 }
 
+
+/**
+ * Creates an OpenXR reference space of specified type.
+ * Reference spaces define coordinate systems for tracking positions in VR (e.g., local, stage, view).
+ */
 bool HMD::CreateReferenceSpace(XrReferenceSpaceType type, XrSpace &outSpace){
     // Create a reference space for the session.
     XrReferenceSpaceCreateInfo referenceSpaceCreateInfo = { XR_TYPE_REFERENCE_SPACE_CREATE_INFO };
@@ -215,6 +238,11 @@ bool HMD::CreateReferenceSpace(XrReferenceSpaceType type, XrSpace &outSpace){
     return true;
 }
 
+
+/**
+ * Begins the OpenXR session by attaching action sets and waiting for the session to be ready.
+ * Polls events until the session reaches READY state, then creates reference spaces for tracking.
+ */
 bool HMD::beginOpenXRSession() {
 
     if (xrInstance == XR_NULL_HANDLE) {
@@ -274,6 +302,11 @@ bool HMD::beginOpenXRSession() {
     return false;
 }
 
+
+/**
+ * Creates an OpenXR swapchain for rendering VR frames.
+ * Allocates image buffers with specified dimensions and format for stereoscopic rendering.
+ */
 bool HMD::CreateSwapchain(uint32_t width,
                           uint32_t height,
                           XrSwapchain& outSwapchain,
@@ -328,6 +361,12 @@ bool HMD::CreateSwapchain(uint32_t width,
     return true;
 }
 
+
+
+/**
+ * Initializes all swapchains required for rendering (main and multiple small swapchains).
+ * Sets up frame buffers for the primary display and additional rendering targets.
+ */
 bool HMD::InitAllSwapchains() {
     
     if (!CreateSwapchain(
@@ -365,6 +404,11 @@ bool HMD::InitAllSwapchains() {
 }
 
 
+
+/**
+ * Initializes action set and pose actions for Vive trackers.
+ * Creates subaction paths for each tracker role and sets up pose input actions for tracking.
+ */
 bool HMD::InitTrackerActions()
 {
     // 1) Create Action Set
@@ -411,6 +455,11 @@ bool HMD::InitTrackerActions()
 }
 
 
+
+/**
+ * Binds tracker pose actions to HTC Vive tracker interaction profile.
+ * Maps each tracker role to its corresponding grip pose input path for position tracking.
+ */
 bool HMD::BindTrackerAction()
 {
     std::cout << "======= BindTrackerAction (Single Fixed) =======\n";
@@ -436,7 +485,7 @@ bool HMD::BindTrackerAction()
              return false;
         }
         
-        // 3. 바인딩 추가
+        
         XrActionSuggestedBinding binding{};
         binding.action = trackerPoseAction;
         binding.binding = inputPath;
@@ -463,7 +512,10 @@ bool HMD::BindTrackerAction()
 
 
 
-
+/**
+ * Creates action spaces for each initialized tracker.
+ * Action spaces allow querying tracker positions and orientations relative to reference spaces.
+ */
 
 bool HMD::CreateTrackerSpaces()
 {

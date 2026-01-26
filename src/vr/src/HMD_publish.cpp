@@ -1,5 +1,9 @@
-// This file contains the definition of processFrameIteration() function that
-// handles frame waiting, beginning, hand joint location updates, and frame submission.
+/**
+ * HMD_publish.cpp
+ * Handles frame processing, hand tracking, joint angle computation, and rendering for VR display.
+ * Processes OpenXR frames, locates hand joints, computes finger angles, and publishes ROS messages.
+ * Currently supports only one hand for teleoperation. Hand tracking for both hands is available but not fully integrated.
+ */
 #define XR_KHR_composition_layer_color
 #include <windows.h>
 #include <glad/glad.h>
@@ -14,27 +18,34 @@
 #include "utils.h"
 #include "lie_utils.h"
 
-
+/**
+ * Main frame processing loop iteration.
+ * Waits for next frame, updates hand tracking data, computes joint angles, and renders the frame.
+ */
 void HMD::processFrameIteration() {
 
-    
     XrFrameState frameState{ XR_TYPE_FRAME_STATE };
     if (!waitAndBeginFrame(frameState)) {
         return;
     }
 
-    UpdateAllTrackers();
+    // UpdateAllTrackers();
 
     ros::Time now = ros::Time::now();
     publishHMDPose(now);
     locateHandJoints();
     bool valid = updatePoseArray(now);
-    if (valid) leftHandToRightHand(pose_array);
+
+    // uncomment this line to use left hand data for both hands
+    // if (valid) leftHandToRightHand(pose_array);
     computeJointAngles(now);
     renderAndSubmitFrame(frameState);
 }
 
-
+/**
+ * Waits for the next OpenXR frame and begins frame rendering.
+ * Synchronizes with the VR runtime's frame timing for smooth rendering.
+ */
 bool HMD::waitAndBeginFrame(XrFrameState& outState) {
     // Wait for the next frame
     XrFrameWaitInfo waitInfo{ XR_TYPE_FRAME_WAIT_INFO };
@@ -53,6 +64,11 @@ bool HMD::waitAndBeginFrame(XrFrameState& outState) {
     return true;
 }
 
+
+/**
+ * Publishes the HMD (head-mounted display) pose as a TF transform.
+ * Locates HMD position and orientation in world space and broadcasts it via ROS TF.
+ */
 void HMD::publishHMDPose(const ros::Time& stamp) {
     XrSpaceLocation loc{ XR_TYPE_SPACE_LOCATION };
     if (XR_SUCCEEDED(xrLocateSpace(hmdSpace, worldSpace, xrTime, &loc)) &&
@@ -73,6 +89,8 @@ void HMD::publishHMDPose(const ros::Time& stamp) {
         tfMsg.transform.rotation.y = loc.pose.orientation.y;
         tfMsg.transform.rotation.z = loc.pose.orientation.z;
         tfMsg.transform.rotation.w = loc.pose.orientation.w;
+
+        transformHMDtoRobot(tfMsg, true, false);
         
 
         tf_broadcaster->sendTransform(tfMsg);
@@ -81,6 +99,11 @@ void HMD::publishHMDPose(const ros::Time& stamp) {
     }
 }
 
+
+/**
+ * Requests hand joint locations from OpenXR hand tracking extension.
+ * Queries positions and orientations for all joints of both left and right hands.
+ */
 void HMD::locateHandJoints() {
     // Request joint locations for both hands
     pXRHandTracking->LocateHandJoints(
@@ -94,54 +117,117 @@ void HMD::locateHandJoints() {
 }
 
 
-bool HMD::updatePoseArray(const ros::Time& stamp) {
+
+/**
+ * Updates the pose array with current hand joint locations.
+ * Extracts positions and orientations from hand tracking data and validates tracking quality.
+ */
+bool HMD::updatePoseArray(const ros::Time& stamp)
+{
     // Initialize header
     pose_array.header.stamp    = stamp;
-    pose_array.header.frame_id = "hmd_frame";
+    pose_array.header.frame_id = "hmd";
 
     const size_t n = kSpecificIndices.size();
     bool tracking_valid = true;
+
     // Fill pose_array from hand joint locations
-    for (size_t i = 0; i < n; ++i) {
+    for (size_t i = 0; i < n; ++i)
+    {
         int jointIdx = kSpecificIndices[i];
 
-        auto leftLoc  = pXRHandTracking->GetHandJointLocations(XR_HAND_LEFT_EXT)->jointLocations[jointIdx];
-        auto rightLoc = pXRHandTracking->GetHandJointLocations(XR_HAND_RIGHT_EXT)->jointLocations[jointIdx];
+        auto leftLoc  = pXRHandTracking
+            ->GetHandJointLocations(XR_HAND_LEFT_EXT)
+            ->jointLocations[jointIdx];
 
-        // std::cout<<pose_array.poses[i]<<std::endl;
-        // std::cout <<leftLoc.locationFlags<<std::endl;
+        auto rightLoc = pXRHandTracking
+            ->GetHandJointLocations(XR_HAND_RIGHT_EXT)
+            ->jointLocations[jointIdx];
+
+        // ---------------- Left hand ----------------
         if ((leftLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) ||
-            (leftLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
-            
+            (leftLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT))
+        {
             geometry_msgs::Pose p;
             p.position.x = leftLoc.pose.position.x;
             p.position.y = leftLoc.pose.position.y;
             p.position.z = leftLoc.pose.position.z;
-            
-            p.orientation.x = leftLoc.pose.orientation.x; 
+
+            p.orientation.x = leftLoc.pose.orientation.x;
             p.orientation.y = leftLoc.pose.orientation.y;
             p.orientation.z = leftLoc.pose.orientation.z;
             p.orientation.w = leftLoc.pose.orientation.w;
-            pose_array.poses[i] = p;
-         
-            // std::cout<<pose_array.poses[i]<<std::endl;
-        }
-        else tracking_valid = false;
 
+            // using both hand is not supported now
+            if (jointIdx == XR_HAND_JOINT_PALM_EXT)
+            {
+                p_hand = p;
+            }
+        }
+        else
+        {
+            tracking_valid = false;
+        }
+
+        // Left palm TF
+        if (jointIdx == XR_HAND_JOINT_PALM_EXT)
+        {
+            geometry_msgs::TransformStamped tfMsg;
+            tfMsg.header.stamp    = stamp;
+            tfMsg.header.frame_id = "hmd";
+            tfMsg.child_frame_id  = "l_hand";
+
+            tfMsg.transform.translation.x = p_hand.position.x;
+            tfMsg.transform.translation.y = p_hand.position.y;
+            tfMsg.transform.translation.z = p_hand.position.z;
+
+            tfMsg.transform.rotation.x = p_hand.orientation.x;
+            tfMsg.transform.rotation.y = p_hand.orientation.y;
+            tfMsg.transform.rotation.z = p_hand.orientation.z;
+            tfMsg.transform.rotation.w = p_hand.orientation.w;
+
+            transformHMDtoRobot(tfMsg, false, true);
+            tf_broadcaster.sendTransform(tfMsg);
+        }
+
+        // ---------------- Right hand ----------------
         if ((rightLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) &&
-            (rightLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
-            
+            (rightLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT))
+        {
             geometry_msgs::Pose p;
             p.position.x = rightLoc.pose.position.x;
             p.position.y = rightLoc.pose.position.y;
             p.position.z = rightLoc.pose.position.z;
-            
-            p.orientation.x = rightLoc.pose.orientation.x; 
+
+            p.orientation.x = rightLoc.pose.orientation.x;
             p.orientation.y = rightLoc.pose.orientation.y;
             p.orientation.z = rightLoc.pose.orientation.z;
             p.orientation.w = rightLoc.pose.orientation.w;
-            // pose_array.poses[i] = p;
-            
+
+            pose_array.poses[i] = p;
+        }
+
+        // Right palm TF
+        if (jointIdx == XR_HAND_JOINT_PALM_EXT)
+        {
+            geometry_msgs::Pose p = pose_array.poses[jointIdx];
+
+            geometry_msgs::TransformStamped tfMsg;
+            tfMsg.header.stamp    = stamp;
+            tfMsg.header.frame_id = "hmd";
+            tfMsg.child_frame_id  = "r_hand";
+
+            tfMsg.transform.translation.x = p.position.x;
+            tfMsg.transform.translation.y = p.position.y;
+            tfMsg.transform.translation.z = p.position.z;
+
+            tfMsg.transform.rotation.x = p.orientation.x;
+            tfMsg.transform.rotation.y = p.orientation.y;
+            tfMsg.transform.rotation.z = p.orientation.z;
+            tfMsg.transform.rotation.w = p.orientation.w;
+
+            transformHMDtoRobot(tfMsg, false, true);
+            tf_broadcaster.sendTransform(tfMsg);
         }
     }
 
@@ -150,6 +236,12 @@ bool HMD::updatePoseArray(const ros::Time& stamp) {
 
 
 
+
+/**
+ * Mirrors left hand poses to right hand coordinate system.
+ * Applies YZ-plane reflection transformation for left-to-right hand conversion.
+ * Currently only one hand is used for teleoperation, if you make new pose_array for left hands, use this function.
+ */
 void HMD::leftHandToRightHand(
     geometry_msgs::PoseArray& poses
 )
@@ -195,6 +287,11 @@ void HMD::leftHandToRightHand(
 }
 
 
+
+/**
+ * Computes thumb joint angles using inverse kinematics.
+ * Calculates abduction-adduction and flexion-extension angles with exponential smoothing.
+ */
 Eigen::Vector2d HMD::computeThumbAngles(
     const geometry_msgs::PoseArray& poses,
     const Eigen::Quaterniond& q_wrist,
@@ -216,6 +313,11 @@ Eigen::Vector2d HMD::computeThumbAngles(
 }
 
 
+
+/**
+ * Computes joint angles for index, middle, and ring fingers.
+ * Converts Euler angles from pose relationships with exponential smoothing for stability.
+ */
 Eigen::Vector2d HMD::computeFingerAngles(
     const geometry_msgs::PoseArray& poses,
     int idx,                        // finger index 1..3
@@ -239,10 +341,15 @@ Eigen::Vector2d HMD::computeFingerAngles(
     return { AA_joint[idx], FE_joint[idx] };
 }
 
-void HMD::computeJointAngles(const ros::Time& stamp) {
+
+/**
+ * Computes all hand joint angles and publishes them via ROS.
+ * Processes thumb and finger angles, palm orientation, and publishes synchronized hand data.
+ */
+void HMD::publishJointAngles(const ros::Time& stamp) {
 
     latest_angles.clear();
-    latest_angles.resize(2 * fingernum_ + 3);
+    latest_angles.resize(2 * fingernum_ + 6);
 
     const size_t n = kSpecificIndices.size();
 
@@ -254,26 +361,8 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     Eigen::Vector3d p_wrist = getPositionfromArray(pose_array, XR_HAND_JOINT_WRIST_EXT);
     
     auto thumb_ang = computeThumbAngles(pose_array, q_wrist, p_wrist, gamma);
-    // std::cout<<"temp before"<<temp[0]<<","<<temp[1]<<std::endl;
-    // std::cout <<"FE : " <<angle.x() << ", AA : "<<angle.y()<<std::endl;
     
-
-    // Eigen::Quaterniond temp =  q_wrist * Eigen::Quaterniond(0.67797271, 0.1477154 , 0.57223282, 0.43713013); // sim
-    // geometry_msgs::Pose p;
-    // p.position.x = p_thumb.x();
-    // p.position.y = p_thumb.y();
-    // p.position.z = p_thumb.z();
-    
-    // p.orientation.x = temp.x(); 
-    // p.orientation.y = temp.y();
-    // p.orientation.z = temp.z();
-    // p.orientation.w = temp.w();
-    // pose_array.poses[2] = p;
-
-
     // thumb
-
-
     latest_angles[0] = thumb_ang[0] ; // AA
     latest_angles[fingernum_] = thumb_ang[1]  ; // FE
 
@@ -297,16 +386,28 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     I.orientation.w = 0;
     
     geometry_msgs::Vector3 euler = pose_utils::poseToEulerAngles(I,pose_array.poses[XR_HAND_JOINT_PALM_EXT]);
+    auto& p = pose_array.poses[XR_HAND_JOINT_PALM_EXT].orientation;
+    Eigen::Quaternionf q(p.w, p.x, p.y, p.z);
+    q.normalize();
+    Eigen::Matrix3f rot_mat = q.toRotationMatrix();
 
-    latest_angles[2*fingernum_] = euler.x;
-    latest_angles[2*fingernum_ + 1] = euler.y;
-    latest_angles[2*fingernum_ + 2] = euler.z;
+    int base_idx = 2 * fingernum_; 
 
+    // Row 0 (r00, r01)
+    latest_angles[base_idx + 0] = rot_mat(0, 0);
+    latest_angles[base_idx + 1] = rot_mat(0, 1);
 
+    // Row 1 (r10, r11)
+    latest_angles[base_idx + 2] = rot_mat(1, 0);
+    latest_angles[base_idx + 3] = rot_mat(1, 1);
 
+    // Row 2 (r20, r21)
+    latest_angles[base_idx + 4] = rot_mat(2, 0);
+    latest_angles[base_idx + 5] = rot_mat(2, 1);
 
-/*
-    // //qpos Anytelop
+    
+    /* This part is for qpos publishing for position retargeting baseline comparison.
+    //qpos Anytelop
 
     auto tip_array = selectPoses(pose_array, kTipIndices);
 
@@ -362,6 +463,7 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
 
     qpos_pub.publish(qpos);
     */
+    
 
     geometry_msgs::PoseArray network_input = pose_array;
     transformPoseArrayToBase(network_input);
@@ -379,10 +481,13 @@ void HMD::computeJointAngles(const ros::Time& stamp) {
     
     hand_sync_pub.publish(sync_msg);
     rviz_pub.publish(pose_array);
-    // data_pub.publish(data_index_array);
+    
 }
 
-
+/**
+ * Renders content to swapchains and submits the frame to OpenXR runtime.
+ * Handles main display and multiple small quad layers with camera images and visual feedback.
+ */
 void HMD::renderAndSubmitFrame(const XrFrameState& frameState) {
     // 1) Acquire next main swapchain image
     uint32_t mainIndex = 0;
@@ -508,19 +613,17 @@ void HMD::renderAndSubmitFrame(const XrFrameState& frameState) {
         std::cerr << "[error] xrEndFrame failed: " 
                 << res << " (" << buf << ")\n";
     }
-
-
-    // throttle ~60Hz
-    // std::this_thread::sleep_for(std::chrono::milliseconds(16));
-    // std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 
     
-    
+/**
+ * ROS callback for receiving camera images.
+ * Converts incoming ROS image messages to OpenCV format for VR display rendering.
+ */
 void HMD::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
 
-    // std::cerr << "[Info] image callback active"<<std::endl;
+    
     try {
         // Convert ROS image message to OpenCV Mat in BGR format
         cv::Mat img = cv_bridge::toCvShare(msg, "bgr8")->image;
@@ -529,17 +632,27 @@ void HMD::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
         // Lock mutex and update the shared image
         std::lock_guard<std::mutex> lock(imageMutex);
         latestImage = img.clone();
-        // std::cerr << "[Info] image callback"<<std::endl;
+
     } catch (cv_bridge::Exception& e) {
         ROS_ERROR("cv_bridge exception: %s", e.what());
     }
 }
 
+
+/**
+ * ROS callback for receiving current state data.
+ * Updates finger current values for visual feedback display.
+ */
 void HMD::currentCallback(const std_msgs::Float32MultiArray::ConstPtr& msg){
     std::copy(msg->data.begin() + 4, msg->data.begin() + 8, current.begin());
 }
 
 
+
+/**
+ * Updates and publishes poses for all Vive trackers in parallel.
+ * If you only use hand tracking, you might not need this.
+ */
 void HMD::UpdateAllTrackers()
 {
     // 1) Sync actions (MUST be single-threaded)
@@ -551,19 +664,11 @@ void HMD::UpdateAllTrackers()
     syncInfo.activeActionSets = &active;
     xrSyncActions(xrSession, &syncInfo);
 
-    // 2) Prepare PoseArray for ROS publish
-    geometry_msgs::PoseArray trackerArray;
-    trackerArray.header.stamp = ros::Time::now();
-    trackerArray.header.frame_id = "world";
-    trackerArray.poses.resize(trackerCount);
-
-    // std::cerr << "update" << trackerCount ;
-
-    // 3) Vector for jobs
+    // 2) Vector for jobs
     std::vector<std::future<void>> jobs;
     jobs.reserve(trackerCount);
 
-    // 4) Launch parallel jobs
+    // 3) Launch parallel jobs
     for (int i = 0; i < trackerCount; ++i)
     {
         jobs.emplace_back(
@@ -571,48 +676,65 @@ void HMD::UpdateAllTrackers()
             {
                 XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
 
-                XrResult res =  xrLocateSpace(trackerSpaces[i],
-                              worldSpace,
-                              xrTime,
-                              &loc);
-                
-            
-                // std::cout << "result" << res <<std::endl;
-                // std::cout << "flag" << loc.locationFlags <<std::endl;
-                // std::cout << "bit" << loc.locationFlags <<std::endl;
+                XrResult res = xrLocateSpace(
+                    trackerSpaces[i],
+                    hmdSpace,
+                    xrTime,
+                    &loc
+                );
+
                 bool posValid = loc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT;
                 bool oriValid = loc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
 
-                geometry_msgs::Pose p;
+                geometry_msgs::TransformStamped tfMsg;
+                tfMsg.header.stamp = ros::Time::now();
+                tfMsg.header.frame_id = "hmd";
 
-                std::cout << "pos :" << posValid <<", ori :"<< oriValid<<std::endl;
-
-                if (posValid && oriValid) {
-                    p.position.x = loc.pose.position.x;
-                    p.position.y = loc.pose.position.y;
-                    p.position.z = loc.pose.position.z;
-
-                    p.orientation.x = loc.pose.orientation.x;
-                    p.orientation.y = loc.pose.orientation.y;
-                    p.orientation.z = loc.pose.orientation.z;
-                    p.orientation.w = loc.pose.orientation.w;
-                } else {
-                    // Invalid → identity pose
-                    p.position.x = p.position.y = p.position.z = 0.0;
-                    p.orientation.x = p.orientation.y = p.orientation.z = 0.0;
-                    p.orientation.w = 1.0;
+                switch (i)
+                {
+                    case 0:
+                        tfMsg.child_frame_id = "l_elbo";
+                        break;
+                    case 1:
+                        tfMsg.child_frame_id = "r_elbo";
+                        break;
+                    case 2:
+                        tfMsg.child_frame_id = "back";
+                        break;
+                    default:
+                        tfMsg.child_frame_id = "tracker_" + std::to_string(i);
                 }
 
-                // Write into trackerArray
-                // This write is safe because each thread writes to a unique index
-                trackerArray.poses[i] = p;
+                if (posValid && oriValid)
+                {
+                    tfMsg.transform.translation.x = loc.pose.position.x;
+                    tfMsg.transform.translation.y = loc.pose.position.y;
+                    tfMsg.transform.translation.z = loc.pose.position.z;
+
+                    tfMsg.transform.rotation.x = loc.pose.orientation.x;
+                    tfMsg.transform.rotation.y = loc.pose.orientation.y;
+                    tfMsg.transform.rotation.z = loc.pose.orientation.z;
+                    tfMsg.transform.rotation.w = loc.pose.orientation.w;
+                }
+                else
+                {
+                    tfMsg.transform.translation.x = 0.0;
+                    tfMsg.transform.translation.y = 0.0;
+                    tfMsg.transform.translation.z = 0.0;
+
+                    tfMsg.transform.rotation.x = 0.0;
+                    tfMsg.transform.rotation.y = 0.0;
+                    tfMsg.transform.rotation.z = 0.0;
+                    tfMsg.transform.rotation.w = 1.0;
+                }
+
+                transformHMDtoRobot(tfMsg, false, false);
+                tf_broadcaster.sendTransform(tfMsg);
             })
         );
     }
 
-    // 5) Wait for all threads to finish
-    for (auto& j : jobs) j.get();
-
-    // 6) Publish once
-    tracker_pose_pub.publish(trackerArray);
+    // 4) Wait for all threads to finish
+    for (auto& j : jobs)
+        j.get();
 }

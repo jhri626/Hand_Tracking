@@ -69,7 +69,7 @@ public:
     void publishHMDPose(const ros::Time& stamp);
     void locateHandJoints();
     bool updatePoseArray(const ros::Time& stamp);
-    void computeJointAngles(const ros::Time& stamp);
+    void publishJointAngles(const ros::Time& stamp);
     void renderAndSubmitFrame(const XrFrameState& frameState);
     void imageCallback(const sensor_msgs::ImageConstPtr& msg);
     void currentCallback(const std_msgs::Float32MultiArray::ConstPtr& msg);
@@ -171,6 +171,7 @@ private:
     ros::Subscriber                    currentSub;
     tf2_ros::TransformBroadcaster*     tf_broadcaster{ nullptr };
     geometry_msgs::PoseArray           pose_array;
+    geometry_msgs::PoseArray           pose_array_temp;
     std_msgs::Float32MultiArray        angle_array;
     std_msgs::Float32MultiArray        data_array;
     std_msgs::Float32MultiArray        qpos;
@@ -179,6 +180,7 @@ private:
     std::vector<float>                 latest_angles;
     ros::Publisher                     hand_sync_pub;
     ros::Publisher                     rviz_pub;
+    ros::Publisher                     rviz_pub2;
     ros::Publisher                     data_pub;
     ros::Publisher                     qpos_pub;
     ros::Publisher                     tracker_pose_pub;

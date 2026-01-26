@@ -35,4 +35,11 @@
         output="screen">
   </node>
 
+
+  <!-- <node pkg="final"
+        type="skeleton_view.py"
+        name="skeleton_view"
+        output="screen">
+  </node> -->
+
 </launch>

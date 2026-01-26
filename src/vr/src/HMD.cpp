@@ -1,3 +1,10 @@
+/**
+ * HMD.cpp
+ * Core HMD class implementation with constructor, destructor, and initialization methods.
+ * Manages ROS node creation, OpenXR setup, hand tracking initialization, and main publishing loop.
+ */
+
+
 // #define XR_USE_GRAPHICS_API_OPENGL
 #include <iostream>
 #include <memory>
@@ -16,6 +23,11 @@
 #include <thread>
 #include <mutex>
 
+
+/**
+ * HMD constructor - initializes member variables and pre-allocates data structures.
+ * Sets up default joint angles, smoothing parameters, and pose array sizing.
+ */
 HMD::HMD(int arc, char *arv[])
 {
 
@@ -66,6 +78,11 @@ HMD::HMD(int arc, char *arv[])
 
 }
 
+
+/**
+ * HMD destructor - cleans up OpenXR resources.
+ * Destroys swapchains, spaces, session, and instance to prevent memory leaks.
+ */
 HMD::~HMD()
 {
     xrDestroySwapchain(xrSwapchain);
@@ -76,6 +93,11 @@ HMD::~HMD()
     xrDestroyInstance(xrInstance);
 }
 
+
+/**
+ * Initializes the entire HMD system including ROS, OpenGL, OpenXR, and hand tracking.
+ * Sets up publishers, subscribers, trackers, and prepares for VR rendering.
+ */
 int HMD::init()
 {   
     if (argc_ < 1 || argv_ == nullptr) {
@@ -90,8 +112,9 @@ int HMD::init()
     // for model
     hand_sync_pub = nh.advertise<vr::HandSyncData>("hand_sync_data", 1);
     rviz_pub = nh.advertise<geometry_msgs::PoseArray>("rviz", 1);
-    // data_pub = nh.advertise<std_msgs::Float32MultiArray>("data", 1);
-    // qpos_pub = nh.advertise<std_msgs::Float32MultiArray>("/baseline", 1);
+    rviz_pub2 = nh.advertise<geometry_msgs::PoseArray>("rviz2", 1);
+    
+    qpos_pub = nh.advertise<std_msgs::Float32MultiArray>("/baseline", 1);
     tracker_pose_pub = nh.advertise<geometry_msgs::PoseArray>("tracker_pose", 1);
 
     marker_pub = nh.advertise<visualization_msgs::Marker>("visualization_marker", 1); // debug tool
@@ -102,8 +125,9 @@ int HMD::init()
 
     tf_broadcaster = new tf2_ros::TransformBroadcaster();
 
-    // pose_array.poses.resize(specific_indices.size()*2);
+    
     pose_array.poses.resize(kSpecificIndices.size());
+    pose_array_temp.poses.resize(kSpecificIndices.size());
     start_time = ros::Time::now();
 
     
@@ -157,21 +181,23 @@ int HMD::init()
         return -1;
     }
 
-    // after beginOpenXRSession()
-    
-
-    
-
-
     return 1;
 }
 
+
+/**
+ * Main ROS publishing loop for continuous hand tracking and rendering.
+ * Processes frames at 60Hz until ROS shutdown or system error.
+ */
 void HMD::rospublish()
 {
     ros::Rate loop_rate(60);
     const size_t n = kSpecificIndices.size();
     pose_array.poses.clear();
     pose_array.poses.resize(n);  
+    pose_array_temp.poses.clear();
+    pose_array_temp.poses.resize(n);  
+
     while (ros::ok()) { 
 
         ros::spinOnce();  

@@ -290,7 +290,7 @@ class Finalnode:
                         np.sign(diff) * threshold,
                         diff)
         ratio = (raw[:4] - self.init[:4]) / np.abs(denom)
-        return 0.36 * np.sign(ratio) * ratio
+        return 0.36 * ratio
 
     @staticmethod
     def apply_delta_clamp(values, prev, max_delta):

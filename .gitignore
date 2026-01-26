@@ -20,3 +20,10 @@ others/
 model/plot.ipynb
 *.png
 *.active
+exp/
+runs/
+*.mp4
+*.pdf
+utils/
+model/new_data/
+model/previous_data/
