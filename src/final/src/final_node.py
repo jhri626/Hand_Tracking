@@ -76,8 +76,6 @@ desired_pos_fe = [0,0,0,0]
 desired_pos_aa = [0,0,0,0]
 
         
-#Preset dynamixel joint value of Gripper
-#ps = np.array([[1689, init_pos[0], 2700], [init_pos[1], 1650-init_pos[1] , 2400 - init_pos[1]], [init_pos[2], 1800 - init_pos[2], 2400 - init_pos[2]], [init_pos[3], 1800 - init_pos[3], 2400 - init_pos[3]]])
 # Thumb: Lateral Pinch, T-1, T-1	Thumb: Init, pinch, full flexion		Index: Init, pinch, full flexion	    Middle: Init, pinch, full flexion
 
 ps_fe = np.array([[0,2550,3100],[0,2900,4300],[0,2841,4300],[0,3167,4300]]) # plate : 0 , pinch , full flexion
@@ -88,18 +86,18 @@ ps_aa = np.array([[600,0,-500],[300,0,-300],[300,0,-300],[300,0,-300]]) #AA same
 
 def wait_for_future(node, future):
     """Wait for a future to complete by spinning the node's executor."""
-    # 노드 인스턴스를 받아 해당 노드를 실행하는 Executor를 생성합니다.
+
     executor = SingleThreadedExecutor()
     executor.add_node(node)
     
-    # 퓨처가 완료될 때까지 spin_once를 반복합니다.
+
     while rclpy.ok():
         executor.spin_once(timeout_sec=0.1)
         if future.done():
             break
             
     executor.remove_node(node)
-    # executor.shutdown() # shutdown은 호출하지 않고 메모리 해제만 유도
+    # executor.shutdown()
     return future.result()
 
 class Finalnode(Node):
@@ -145,8 +143,7 @@ class Finalnode(Node):
         self.AA_max_delta = 0.05
         self.collision_margin = 0.2
         self.joint_currents = np.zeros(NUM_JOINT,dtype=np.int16)
-        # __init__ 내부에 추가
-        self.declare_parameter('min_diff_threshold', 15.0) # 기본값 15.0 설정
+        self.declare_parameter('min_diff_threshold', 15.0) 
 
 
     def get_parameter_from_server(self):
@@ -163,37 +160,35 @@ class Finalnode(Node):
 
             self.get_logger().info(f"Setting up client for {target_node_name}...")
             
-            # 1. 파라미터 서비스 클라이언트 생성
-            # rclpy.parameter_client이 없으므로, 기본 서비스 인터페이스를 사용합니다.
+
             self.param_client = self.create_client(
                 GetParameters,
-                f'{target_node_name}/get_parameters' # 서비스 이름 형식: /<node_name>/get_parameters
+                f'{target_node_name}/get_parameters' 
             )
 
             self.get_logger().info(f"Waiting for service '{target_node_name}/get_parameters'...")
             
-            # 2. 서비스가 뜰 때까지 대기 (5초 타임아웃)
+
             if not self.param_client.wait_for_service(timeout_sec=5.0):
                 self.get_logger().error(f"Parameter service for {target_node_name} not available.")
                 self.disable_torque_all()
                 return
 
-            # 3. 비동기 요청 메시지 생성 및 전송
+            
             request = GetParameters.Request()
             request.names = [target_param_name]
             
             self.get_logger().info(f"Requesting parameter '{target_param_name}'...")
 
-            # 비동기 호출 및 퓨처 객체 획득
+            
             # print("request")
             future = self.param_client.call_async(request)
 
-            # 4. 헬퍼 함수를 사용하여 퓨처가 완료될 때까지 동기적으로 대기
+            
             response = wait_for_future(self, future)
             # print("response")
             param_value = None
             if response.values and response.values[0].type != 0: # 0: UNINITIALIZED
-                # rcl_interfaces.msg.ParameterValue에서 값 추출
                 param_value = response.values[0].double_array_value
 
             try:
@@ -220,7 +215,7 @@ class Finalnode(Node):
                     self.thumb  = self.cali_points[3]  # 4. thumb bend pose
                     self.sphere = self.cali_points[4]  # 5. sphere pose
                     
-                    # Subscriber 생성
+            
                     # print("subcribe")
                     self.sub = self.create_subscription(Float32MultiArray, '/model_out', self.callback, 1)
 
@@ -334,10 +329,6 @@ class Finalnode(Node):
             fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
             aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
 
-            ############################### temporal for experiment########################
-            # fe_adjusted = fe
-            # aa_adjusted = aa
-            ###############################################################################
 
             # Update previous state for next iteration
             self.FE_prev = fe_adjusted.copy()
@@ -346,9 +337,21 @@ class Finalnode(Node):
             # Apply finger-collision avoidance adjustments to AA
             aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
             combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
-            # print(combined)
+
         elif self.mode == "base":
-            combined = msg.data
+            raw_data = np.array(msg.data)
+            # combined = msg.data
+            fe = raw_data[:4]
+            aa = raw_data[4:]
+
+            fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
+            aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
+            self.FE_prev = fe_adjusted.copy()
+            self.AA_prev = aa_adjusted.copy()
+
+            # Apply finger-collision avoidance adjustments to AA
+            aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
+            combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
 
         # Concatenate AA and FE into a single command array
         
@@ -472,18 +475,17 @@ class Finalnode(Node):
     def read_current(self) :
         dxl_current_result = self.groupSyncRead_current.txRxPacket()
         for i in range(4) :
-            # print(self.groupSyncRead_current.getData(DXL_ID_AA[i], 126, 1))
+         
             self.joint_currents[i] = self.groupSyncRead_current.getData(DXL_ID_AA[i], PRESENT_CURRENT, 2)
         for i in range(4) :
             self.joint_currents[i+4] = self.groupSyncRead_current.getData(DXL_ID_FE[i], PRESENT_CURRENT, 2)
         msg = Float32MultiArray()
-        #msg= Int64MultiArray()
-        # print(self.joint_currents)
+        
         currents_float = self.joint_currents.astype(np.float32)
         current_stat = currents_float / np.array(CurLimit)
         
         msg.data = current_stat.tolist()
-        # print("topic",current_stat)
+        
         self.current_pub.publish(msg)
     
     def disable_torque_all(self):
@@ -498,11 +500,15 @@ class Finalnode(Node):
         try:
             for i in DXL_ID:
                 self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE, TORQUE_DISABLE)
-                # self.packetHandler.reboot(self.portHandler, i)
+                
         except Exception as e:
             self.get_logger().error(f"Failed to disable torque :{e}")
     
     def recovery(self, msg):
+        """
+        Recovery procedure to reboot motors in case of hardware error.
+        This function is not fully developed.
+        """
         # 1) Enter recovery mode: unsubscribe all callbacks
         self.get_logger().info("[Recovery] start: unsubscribing callbacks")
         if self.sub:
@@ -555,7 +561,6 @@ def main(args=None):
         print("shutdown by user")
     finally:
         print("shutdown")
-        # print(e)
         if node.mode != 'sim':
             node.disable_torque_all()
         node.destroy_node()
@@ -564,14 +569,5 @@ def main(args=None):
 if __name__ == '__main__':
     main()
 
-    # node.disable_torque_all()
         
-    # TODO : update logic with update cali method   
-    # 1. still pose : basic pose
-    # 2. extend pose : extend every finger as much as possible
-    # 3. thumbs up pose : bend fingers except thumb
-    # 4. thumb bend pose : bend only thumb
-    # 5. sphere pose  : make sphere with hands (could not be used)
-
-    # TODO : pinch pose? check it is stable or not 
-    # if yes -> add pinch pose for cali pose
+    

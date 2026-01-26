@@ -1,52 +1,49 @@
-// This file contains the definition of processFrameIteration() function that
-// handles frame waiting, beginning, hand joint location updates, and frame submission.
+/**
+ * HMD_publish.cpp
+ * Handles frame processing, hand tracking, joint angle computation, and rendering for VR display.
+ * Processes OpenXR frames, locates hand joints, computes finger angles, and publishes ROS messages.
+ * Currently supports only one hand for teleoperation. Hand tracking for both hands is available but not fully integrated.
+ */
+
 #define XR_KHR_composition_layer_color
-#include <glad/glad.h>
-#include <openxr/openxr.h>
 #include <chrono>
-#include <vector>
 #include <iostream>
 #include <cstdlib>
-#include <GL/gl.h>
 #include "HMD.h"
-#include "HMD_number.h"
-#include "utils.h"
 #include "lie_utils.h"
+#include "ik.h"
 
-
+/**
+ * Main frame processing loop iteration.
+ * Waits for next frame, updates hand tracking data, computes joint angles, and renders the frame.
+ */
 bool HMD::processFrameIteration() {
 
-    // XrSpace startHandle = hmdSpace;
     XrFrameState frameState{ XR_TYPE_FRAME_STATE };
     if (!waitAndBeginFrame(frameState)) {
         return false;
     }
 
-    UpdateAllTrackers();
-
-    // if (hmdSpace != startHandle) {
-    //     std::cerr << "[CRITICAL WARNING] hmdSpace changed after UpdateAllTrackers!" << std::endl;
-    //     std::cerr << "  Old: " << (void*)startHandle << " -> New: " << (void*)hmdSpace << std::endl;
-    // }
-
+    // UpdateAllTrackers();
     rclcpp::Time now = node_->now();
     publishHMDPose(now);
+
     locateHandJoints();
     bool valid = updatePoseArray(now);
+    
+    // uncomment this line to use left hand data for both hands
     // if (valid) leftHandToRightHand(pose_array);
+
     computeJointAngles(now);
     renderAndSubmitFrame(frameState);
 
     return true;
-
-    // std::cerr << "[Check End]   hmdSpace Handle: " << (void*)hmdSpace << std::endl;
-
-    // if (hmdSpace != startHandle) {
-    //      std::cerr << "[CRITICAL ERROR] hmdSpace is unstable!" << std::endl;
-    // }
 }
 
-
+/**
+ * Waits for the next OpenXR frame and begins frame rendering.
+ * Synchronizes with the VR runtime's frame timing for smooth rendering.
+ */
 bool HMD::waitAndBeginFrame(XrFrameState& outState) {
     // Wait for the next frame
     if (!rclcpp::ok()) return false;
@@ -66,6 +63,10 @@ bool HMD::waitAndBeginFrame(XrFrameState& outState) {
     return true;
 }
 
+/**
+ * Publishes the HMD (head-mounted display) pose as a TF transform.
+ * Locates HMD position and orientation in world space and broadcasts it via ROS TF.
+ */
 void HMD::publishHMDPose(const rclcpp::Time& stamp) {
     XrSpaceLocation loc{ XR_TYPE_SPACE_LOCATION };
     if (XR_SUCCEEDED(xrLocateSpace(hmdSpace, worldSpace, xrTime, &loc)) &&
@@ -99,6 +100,10 @@ void HMD::publishHMDPose(const rclcpp::Time& stamp) {
     }
 }
 
+/**
+ * Requests hand joint locations from OpenXR hand tracking extension.
+ * Queries positions and orientations for all joints of both left and right hands.
+ */
 void HMD::locateHandJoints() {
     // Request joint locations for both hands
     pXRHandTracking->LocateHandJoints(
@@ -111,7 +116,10 @@ void HMD::locateHandJoints() {
     );
 }
 
-
+/**
+ * Updates the pose array with current hand joint locations.
+ * Extracts positions and orientations from hand tracking data and validates tracking quality.
+ */
 bool HMD::updatePoseArray(const rclcpp::Time& stamp) {
     // Initialize header
     pose_array.header.stamp    = stamp;
@@ -126,8 +134,6 @@ bool HMD::updatePoseArray(const rclcpp::Time& stamp) {
         auto leftLoc  = pXRHandTracking->GetHandJointLocations(XR_HAND_LEFT_EXT)->jointLocations[jointIdx];
         auto rightLoc = pXRHandTracking->GetHandJointLocations(XR_HAND_RIGHT_EXT)->jointLocations[jointIdx];
 
-        // std::cout<<pose_array.poses[i]<<std::endl;
-        // std::cout <<leftLoc.locationFlags<<std::endl;
         if ((leftLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) ||
             (leftLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
             
@@ -141,12 +147,17 @@ bool HMD::updatePoseArray(const rclcpp::Time& stamp) {
                 p.orientation.z = leftLoc.pose.orientation.z;
                 p.orientation.w = leftLoc.pose.orientation.w;
                 // pose_array.poses[i] = p;
+                
+                /** using both hand is not supported now
+                 * For both hand teleoperation, make new pose_array 
+                */
 
                 if (jointIdx == XR_HAND_JOINT_PALM_EXT)
                 {
                     p_hand = p;
                 }   
         }
+        else tracking_valid = false;
 
         if (jointIdx == XR_HAND_JOINT_PALM_EXT)
             {
@@ -167,7 +178,7 @@ bool HMD::updatePoseArray(const rclcpp::Time& stamp) {
 
                     tf_broadcaster->sendTransform(tfMsg);
             }
-        // else tracking_valid = false;
+        
 
         if ((rightLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) &&
             (rightLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
@@ -206,12 +217,14 @@ bool HMD::updatePoseArray(const rclcpp::Time& stamp) {
                     tf_broadcaster->sendTransform(tfMsg);
             }
     }
-
     return tracking_valid;
 }
 
-
-
+/**
+ * Mirrors left hand poses to right hand coordinate system.
+ * Applies YZ-plane reflection transformation for left-to-right hand conversion.
+ * Currently only one hand is used for teleoperation, if you make new pose_array for left hands, use this function.
+ */
 void HMD::leftHandToRightHand(
     geometry_msgs::msg::PoseArray& poses    
 )
@@ -256,7 +269,10 @@ void HMD::leftHandToRightHand(
     }
 }
 
-
+/**
+ * Computes thumb joint angles using inverse kinematics.
+ * Calculates abduction-adduction and flexion-extension angles with exponential smoothing.
+ */
 Eigen::Vector2d HMD::computeThumbAngles(
     const geometry_msgs::msg::PoseArray& poses,
     const Eigen::Quaterniond& q_wrist,
@@ -277,10 +293,13 @@ Eigen::Vector2d HMD::computeThumbAngles(
     return { AA_joint[0], FE_joint[0] };
 }
 
-
+/**
+ * Computes joint angles for index, middle, and ring fingers.
+ * Converts Euler angles from pose relationships with exponential smoothing for stability.
+ */
 Eigen::Vector2d HMD::computeFingerAngles(
     const geometry_msgs::msg::PoseArray& poses,
-    int idx,                        // finger index 1..3
+    int idx,
     const Eigen::Vector3d& y_axis,
     double smoothing_gamma
 ) {
@@ -291,20 +310,24 @@ Eigen::Vector2d HMD::computeFingerAngles(
                                          poses.poses[1+5*idx],
                                          poses.poses[2+5*idx],
                                          poses.poses[3+5*idx]);
-    // double AA = std::isnan(euler.y) ? 0.0 : angles.y();
+    
     double AA = std::isnan(euler.y) ? 0.0 : euler.y * 180.0 / M_PI;
     double FE = std::isnan(euler.x) ? 0.0 : euler.x * 180.0 / M_PI;
     // smoothing
     AA_joint[idx] = (1 - smoothing_gamma) * AA_joint[idx] + smoothing_gamma * AA;
     FE_joint[idx] = (1 - smoothing_gamma) * FE_joint[idx] + smoothing_gamma * FE;
-    // std::cout <<"idx : "<< idx <<" , euler : "<< euler.y  << ", angle : "<< angles.y() * M_PI / 180 << std::endl;
+    
     return { AA_joint[idx], FE_joint[idx] };
 }
 
-void HMD::computeJointAngles(const rclcpp::Time& stamp) {
+/**
+ * Computes all hand joint angles and publishes them via ROS.
+ * Processes thumb and finger angles, palm orientation, and publishes synchronized hand data.
+ */
+void HMD::publishJointAngles(const rclcpp::Time& stamp) {
 
     latest_angles.clear();
-    latest_angles.resize(2 * fingernum_ + 3);
+    latest_angles.resize(2 * fingernum_ + 6);
 
     const size_t n = kSpecificIndices.size();
 
@@ -316,25 +339,8 @@ void HMD::computeJointAngles(const rclcpp::Time& stamp) {
     Eigen::Vector3d p_wrist = getPositionfromArray(pose_array, XR_HAND_JOINT_WRIST_EXT);
     
     auto thumb_ang = computeThumbAngles(pose_array, q_wrist, p_wrist, gamma);
-    // std::cout<<"temp before"<<temp[0]<<","<<temp[1]<<std::endl;
-    // std::cout <<"FE : " <<angle.x() << ", AA : "<<angle.y()<<std::endl;
-    
-
-    // Eigen::Quaterniond temp =  q_wrist * Eigen::Quaterniond(0.67797271, 0.1477154 , 0.57223282, 0.43713013); // sim
-    // geometry_msgs::Pose p;
-    // p.position.x = p_thumb.x();
-    // p.position.y = p_thumb.y();
-    // p.position.z = p_thumb.z();
-    
-    // p.orientation.x = temp.x(); 
-    // p.orientation.y = temp.y();
-    // p.orientation.z = temp.z();
-    // p.orientation.w = temp.w();
-    // pose_array.poses[2] = p;
-
 
     // thumb
-
 
     latest_angles[0] = thumb_ang[0] ; // AA
     latest_angles[fingernum_] = thumb_ang[1]  ; // FE
@@ -360,19 +366,35 @@ void HMD::computeJointAngles(const rclcpp::Time& stamp) {
     
     geometry_msgs::msg::Vector3 euler = pose_utils::poseToEulerAngles(I,pose_array.poses[XR_HAND_JOINT_PALM_EXT]);
 
-    latest_angles[2*fingernum_] = euler.x;
-    latest_angles[2*fingernum_ + 1] = euler.y;
-    latest_angles[2*fingernum_ + 2] = euler.z;
+    auto& p = pose_array.poses[XR_HAND_JOINT_PALM_EXT].orientation;
+    Eigen::Quaternionf q(p.w, p.x, p.y, p.z);
+    q.normalize();
+    Eigen::Matrix3f rot_mat = q.toRotationMatrix();
+
+    int base_idx = 2 * fingernum_; 
+
+    // Row 0 (r00, r01)
+    latest_angles[base_idx + 0] = rot_mat(0, 0);
+    latest_angles[base_idx + 1] = rot_mat(0, 1);
+
+    // Row 1 (r10, r11)
+    latest_angles[base_idx + 2] = rot_mat(1, 0);
+    latest_angles[base_idx + 3] = rot_mat(1, 1);
+
+    // Row 2 (r20, r21)
+    latest_angles[base_idx + 4] = rot_mat(2, 0);
+    latest_angles[base_idx + 5] = rot_mat(2, 1);
 
 
 
 
-/*
-    // //qpos Anytelop
+    /* This part is for qpos publishing for position retargeting baseline comparison.
+    
+    //qpos Position Retargeting
 
     auto tip_array = selectPoses(pose_array, kTipIndices);
 
-// 2) Intermediate poses
+    // 2) Intermediate poses
     auto inter_array = selectPoses(pose_array, kIntermediateIndices);
 
     // 3) Root positions
@@ -391,15 +413,11 @@ void HMD::computeJointAngles(const rclcpp::Time& stamp) {
         double& current_FE = qpos_FE[idx];
         double& current_AA = qpos_AA[idx];
 
-        Eigen::Vector2d& theta_est = ik::Anyteleopmethod(
+        Eigen::Vector2d& theta_est = ik::PositionRetargeting(
         local_frame_array[idx], root_array[idx], inter_array[idx], tip_array[idx],
         current_FE, current_AA, idx
         );
 
-        // if ( idx == 0)
-        // {
-        //     std::cout<<"FE : "<<theta_est[0]<<", AA : "<<theta_est[1]<<std::endl;
-        // }
 
         // Efficient exponential smoothing (less multiplication)
         double FE_delta = (1.0 - gamma) * (theta_est[0] - current_FE);
@@ -420,10 +438,13 @@ void HMD::computeJointAngles(const rclcpp::Time& stamp) {
     };
     qpos.data[8] = euler.x;
     qpos.data[9] = euler.y;
-    qpos.data[10] = euler.z;
+    qpos.data[10] = euler.z; 
+    
 
-    qpos_pub.publish(qpos);
+
+    qpos_pub->publish(qpos);
     */
+    
 
     geometry_msgs::msg::PoseArray network_input = pose_array;
     transformPoseArrayToBase(network_input);
@@ -442,10 +463,12 @@ void HMD::computeJointAngles(const rclcpp::Time& stamp) {
     hand_sync_pub->publish(sync_msg);
     rviz_pub->publish(pose_array);
 
-    // data_pub.publish(data_index_array);
 }
 
-
+/**
+ * Renders content to swapchains and submits the frame to OpenXR runtime.
+ * Handles main display and multiple small quad layers with camera images and visual feedback.
+ */
 void HMD::renderAndSubmitFrame(const XrFrameState& frameState) {
     // 1) Acquire next main swapchain image
     uint32_t mainIndex = 0;
@@ -454,12 +477,15 @@ void HMD::renderAndSubmitFrame(const XrFrameState& frameState) {
 
     // 2) Wait until the main image is available
     XrSwapchainImageWaitInfo waitInfo{ XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
-    waitInfo.timeout = XR_INFINITE_DURATION;
-    xrWaitSwapchainImage(xrSwapchain, &waitInfo);
+    waitInfo.timeout = 1000 * 1000 * 1000;
+    XrResult res_img = xrWaitSwapchainImage(xrSwapchain, &waitInfo);
+    if (XR_FAILED(res_img) || res_img == XR_TIMEOUT_EXPIRED) {
+    return;
+    }
 
     XrSwapchainImageReleaseInfo releaseInfo{ XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
 
-    // 3) Render into main swapchain
+    // 3) Render into main swapchain.This is the main view part where camera image is drawn.
     static GLuint colorFBO = 0;
     if (colorFBO == 0) {
         glGenFramebuffers(1, &colorFBO);
@@ -489,7 +515,7 @@ void HMD::renderAndSubmitFrame(const XrFrameState& frameState) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     xrReleaseSwapchainImage(xrSwapchain, &releaseInfo);
 
-    // 4) Render into each small swapchain
+    // 4) Render into each small swapchain. This part is for motor current feedback.
     std::array<uint32_t, kSmallCount> smallIndices;
     for (int i = 0; i < kSmallCount; ++i) {
         // acquire and wait on small swapchain i
@@ -571,19 +597,15 @@ void HMD::renderAndSubmitFrame(const XrFrameState& frameState) {
         std::cerr << "[error] xrEndFrame failed: " 
                 << res << " (" << buf << ")\n";
     }
-
-
-    // throttle ~60Hz
-    // std::this_thread::sleep_for(std::chrono::milliseconds(16));
-    // std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
-
-    
-    
+/**
+ * ROS callback for receiving camera images.
+ * Converts incoming ROS image messages to OpenCV format for VR display rendering.
+ */
 void HMD::imageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
 
-    // std::cerr << "[Info] image callback active"<<std::endl;
+    
     try {
         // Convert ROS image message to OpenCV Mat in BGR format
         cv::Mat img = cv_bridge::toCvShare(msg, "bgr8")->image;
@@ -592,18 +614,24 @@ void HMD::imageCallback(const sensor_msgs::msg::Image::SharedPtr msg) {
         // Lock mutex and update the shared image
         std::lock_guard<std::mutex> lock(imageMutex);
         latestImage = img.clone();
-        // std::cerr << "[Info] image callback"<<std::endl;
     } catch (cv_bridge::Exception& e) {
         RCLCPP_ERROR(node_->get_logger(), "cv_bridge exception: %s", e.what());
     }
 }
 
+/**
+ * ROS callback for receiving current state data.
+ * Updates finger current values for visual feedback display.
+ */
 void HMD::currentCallback(const std_msgs::msg::Float32MultiArray::SharedPtr msg)
 {
     std::copy(msg->data.begin() + 4, msg->data.begin() + 8, current.begin());
 }
 
-
+/**
+ * Updates and publishes poses for all Vive trackers in parallel.
+ * If you only use hand tracking, you might not need this.
+ */
 void HMD::UpdateAllTrackers()
 {
     // 1) Sync actions (MUST be single-threaded)
@@ -619,7 +647,7 @@ void HMD::UpdateAllTrackers()
     std::vector<std::future<void>> jobs;
     jobs.reserve(trackerCount);
 
-    // 4) Launch parallel jobs
+    // 3) Launch parallel jobs
     for (int i = 0; i < trackerCount; ++i)
     {
         jobs.emplace_back(
@@ -632,10 +660,6 @@ void HMD::UpdateAllTrackers()
                               xrTime,
                               &loc);
                 
-            
-                // std::cout << "result" << res <<std::endl;
-                // std::cout << "flag" << loc.locationFlags <<std::endl;
-                // std::cout << "bit" << loc.locationFlags <<std::endl;
                 bool posValid = loc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT;
                 bool oriValid = loc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
 
@@ -658,8 +682,6 @@ void HMD::UpdateAllTrackers()
                         tfMsg.child_frame_id = "tracker_" + std::to_string(i);
                 }
 
-                // std::cout << "pos :" << posValid <<", ori :"<< oriValid<<std::endl;
-
                 if (posValid && oriValid) {
                     tfMsg.transform.translation.x = loc.pose.position.x;
                     tfMsg.transform.translation.y = loc.pose.position.y;
@@ -681,12 +703,10 @@ void HMD::UpdateAllTrackers()
                 transformHMDtoRobot(tfMsg, false, false);
                 tf_broadcaster->sendTransform(tfMsg);
 
-                // Write into trackerArray
-                // This write is safe because each thread writes to a unique index
             })
         );
     }
 
-    // 5) Wait for all threads to finish
+    // 4) Wait for all threads to finish
     for (auto& j : jobs) j.get();
 }

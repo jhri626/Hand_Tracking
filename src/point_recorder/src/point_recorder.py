@@ -16,6 +16,7 @@ class PointRecorder(Node):
     - Subscribes to '/model_out'
     - Service 'record_point' gathers samples and averages them.
     - Uses MultiThreadedExecutor to handle blocking service calls.
+    - Enter 'ros2 service call /record_point std_srvs/srv/Trigger "{}"' to record a point at the terminal.
     """
 
     def __init__(self):
@@ -77,7 +78,7 @@ class PointRecorder(Node):
             return
 
         # print(list(msg.data))
-        self.get_logger().info(f"Updated latest_angles: {list(msg.data)}"        )
+        self.get_logger().info(f"Updated latest_angles: {list(msg.data)}")
         # Only store data if the service has requested collection
         if self.is_collecting:
             self.samples_buffer.append(list(msg.data))
@@ -126,8 +127,6 @@ class PointRecorder(Node):
         # 5. Store & Update Parameter
         self.recorded_points.append(averaged)
         
-        # Note: ROS 2 parameters don't easily support List of Lists (2D arrays) natively via CLI/Runtime without parsing.
-        # We will attempt to update the parameter, but also print the YAML format for user convenience.
         try:
             flattened_points = [item for sublist in self.recorded_points for item in sublist]
         
@@ -178,5 +177,3 @@ def main(args=None):
 if __name__ == '__main__':
     main()
 
-
-    # ros2 service call /record_point std_srvs/srv/Trigger "{}"

@@ -1,9 +1,19 @@
+/**
+ * utils.cpp
+ * Utility functions for window creation, pose conversions, and coordinate transformations.
+ * Provides helper functions for OpenGL window setup, Eigen/ROS geometry conversions,
+ * and VR-to-robot coordinate frame transformations.
+ */
+
 #include <utils.h>
 #include <openxr/openxr.h>
 #include <iostream>
 #include <conio.h>
 
-
+/**
+ * Windows message callback procedure for the OpenGL rendering window.
+ * Handles window destruction messages.
+ */
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
     case WM_DESTROY:
@@ -15,7 +25,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     return 0;
 }
 
-
+/**
+ * Checks for keyboard input from the user.
+ * Returns 1 if 't' key is pressed (trigger), otherwise 0.
+ */
 int checkUserInput() {
     if (_kbhit()) {
         char c = _getch();
@@ -27,7 +40,10 @@ int checkUserInput() {
     return 0;  
 }
 
-
+/**
+ * Creates a Windows rendering window for OpenGL context.
+ * Registers window class and creates an 800x600 window for VR rendering.
+ */
 bool CreateRenderWindow(HWND& hWnd)
 {
     WNDCLASS wc = {};
@@ -57,6 +73,10 @@ bool CreateRenderWindow(HWND& hWnd)
     return true;
 }
 
+/**
+ * Extracts 3D position from a pose array at specified index.
+ * Converts ROS geometry message to Eigen vector.
+ */
 Eigen::Vector3d getPositionfromArray(
     const geometry_msgs::msg::PoseArray& poses, size_t idx)
 {
@@ -65,7 +85,10 @@ Eigen::Vector3d getPositionfromArray(
     return {p.x, p.y, p.z};
 }
 
-
+/**
+ * Extracts 3D position from a single pose.
+ * Converts ROS geometry message to Eigen vector.
+ */
 Eigen::Vector3d getPositionfromPose(
     const geometry_msgs::msg::Pose& pose)
 {
@@ -74,6 +97,10 @@ Eigen::Vector3d getPositionfromPose(
     return {p.x, p.y, p.z};
 }
 
+/**
+ * Extracts quaternion orientation from a pose array at specified index.
+ * Converts ROS geometry message to Eigen quaternion.
+ */
 Eigen::Quaterniond getQuaternionfromArray(
     const geometry_msgs::msg::PoseArray& poses, 
     size_t idx)
@@ -82,6 +109,10 @@ Eigen::Quaterniond getQuaternionfromArray(
     return {o.w, o.x, o.y, o.z};
 }
 
+/**
+ * Extracts quaternion orientation from a single pose.
+ * Converts ROS geometry message to Eigen quaternion.
+ */
 Eigen::Quaterniond getQuaternionfromPose(
     const geometry_msgs::msg::Pose& pose)
 {
@@ -89,7 +120,10 @@ Eigen::Quaterniond getQuaternionfromPose(
     return {o.w, o.x, o.y, o.z};
 }
 
-
+/**
+ * Transforms all poses in an array to palm-centered coordinate frame.
+ * Applies inverse transformation based on palm pose to make it the local origin.
+ */
 void transformPoseArrayToBase(geometry_msgs::msg::PoseArray& poses)
 {
     if (poses.poses.empty()) {
@@ -119,8 +153,9 @@ void transformPoseArrayToBase(geometry_msgs::msg::PoseArray& poses)
     }
 }
 
-
-
+/**
+ * Converts HMD coordinate frames to robot base coordinate frame for teleoperation with Jet.
+ */
 void transformHMDtoRobot(geometry_msgs::msg::TransformStamped& tfMsg, bool is_hmd, bool is_hand)
 {
     Eigen::Quaterniond q = {tfMsg.transform.rotation.w ,tfMsg.transform.rotation.x, tfMsg.transform.rotation.y, tfMsg.transform.rotation.z};
@@ -153,11 +188,6 @@ void transformHMDtoRobot(geometry_msgs::msg::TransformStamped& tfMsg, bool is_hm
             0.0, 0.0, 1.0, 0.0,
             -1.0, 0.0, 0.0, 0.0,
             0.0, 0.0, 0.0, 1.0;
-        // T_HR <<
-        //     1.0, 0.0, 0.0, 0.0,
-        //     0.0, 1.0, 0.0, 0.0,
-        //     0.0, 0.0, 1.0, 0.0,
-        //     0.0, 0.0, 0.0, 1.0;
 
         Eigen::Matrix4d T_BR = T_controlWorld2World * T_BH * T_HR;
 
@@ -179,11 +209,6 @@ void transformHMDtoRobot(geometry_msgs::msg::TransformStamped& tfMsg, bool is_hm
             -1.0, 0.0, 0.0, 0.0,
             0.0, 1.0, 0.0, 0.0,
             0.0, 0.0, 0.0, 1.0;  // homogeneous last row
-        // T_RH <<
-        //     1.0, 0.0, 0.0, 0.0,
-        //     0.0, 1.0, 0.0, 0.0,
-        //     0.0, 0.0, 1.0, 0.0,
-        //     0.0, 0.0, 0.0, 1.0;  // homogeneous last row
 
         Eigen::Matrix4d T_RT = T_RH * T_HT;
 
@@ -200,10 +225,6 @@ void transformHMDtoRobot(geometry_msgs::msg::TransformStamped& tfMsg, bool is_hm
             1.0, 0.0, 0.0,
             0.0, 0.0, 1.0;
 
-        // R_rot <<
-        //     1.0, 0.0, 0.0,
-        //     0.0, 1.0, 0.0,
-        //     0.0, 0.0, 1.0;
         R_new = R_new * R_rot;
         is_tracker = false;
     }

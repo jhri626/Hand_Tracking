@@ -25,7 +25,7 @@ namespace pose_utils {
 // The function computes the relative quaternion:
 //   q_relative = q_ref.conjugate() * q_target
 // and then converts it to Euler angles (roll, pitch, yaw),
-// printing the result in both radians and degrees.
+
 geometry_msgs::msg::Vector3 poseToEulerAngles(
     const geometry_msgs::msg::Pose& pose_ref,
     const geometry_msgs::msg::Pose& pose_target

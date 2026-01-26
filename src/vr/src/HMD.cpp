@@ -1,16 +1,18 @@
-// #define XR_USE_GRAPHICS_API_OPENGL
+/**
+ * HMD.cpp
+ * Core HMD class implementation with constructor, destructor, and initialization methods.
+ * Manages ROS node creation, OpenXR setup, hand tracking initialization, and main publishing loop.
+ */
+
 #include <iostream>
-#include <memory>
-// #include <spdlog/spdlog.h>
 #include <rclcpp/rclcpp.hpp>
 #include "HMD.h"
-
-#include <openxr/openxr.h>
-#include <openxr/openxr_platform.h>
-#include <GL/gl.h>
-#include <thread>
 #include <mutex>
 
+/**
+ * HMD constructor - initializes member variables and pre-allocates data structures.
+ * Sets up default joint angles, smoothing parameters, and pose array sizing.
+ */
 HMD::HMD(int argc, char *argv[])
 : argc_(argc),
   argv_(argv),
@@ -44,7 +46,10 @@ HMD::HMD(int argc, char *argv[])
     pose_array.poses.resize(kSpecificIndices.size());
 }
 
-
+/**
+ * HMD destructor - cleans up OpenXR resources.
+ * Destroys swapchains, spaces, session, and instance to prevent memory leaks.
+ */
 HMD::~HMD()
 {
     xrDestroySwapchain(xrSwapchain);
@@ -55,6 +60,10 @@ HMD::~HMD()
     xrDestroyInstance(xrInstance);
 }
 
+/**
+ * Initializes the entire HMD system including ROS, OpenGL, OpenXR, and hand tracking.
+ * Sets up publishers, subscribers, trackers, and prepares for VR rendering.
+ */
 int HMD::init()
 {   
     if (argc_ < 1 || argv_ == nullptr) {
@@ -70,8 +79,8 @@ int HMD::init()
     // for model
     hand_sync_pub = node_->create_publisher<vr::msg::HandSyncData>("hand_sync_data", 1);
     rviz_pub = node_->create_publisher<geometry_msgs::msg::PoseArray>("rviz", 1);
-    // data_pub = nh.advertise<std_msgs::Float32MultiArray>("data", 1);
-    // qpos_pub = nh.advertise<std_msgs::Float32MultiArray>("/baseline", 1);
+    // data_pub = node_->create_publisher<std_msgs::Float32MultiArray>("data", 1);
+    qpos_pub = node_->create_publisher<std_msgs::msg::Float32MultiArray>("/baseline", 1);
     tracker_pose_pub = node_->create_publisher<geometry_msgs::msg::PoseArray>("tracker_pose", 1);
     marker_pub = node_->create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 1); // debug tool
 
@@ -153,6 +162,10 @@ int HMD::init()
     return 1;
 }
 
+/**
+ * Main ROS publishing loop for continuous hand tracking and rendering.
+ * Processes frames at 60Hz until ROS shutdown or system error.
+ */
 void HMD::rospublish()
 {
     rclcpp::WallRate loop_rate(60);

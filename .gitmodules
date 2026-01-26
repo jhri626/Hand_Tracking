@@ -1,8 +1,8 @@
 [submodule "src/vr/third_party/OpenXRProvider"]
 	path = src/vr/third_party/OpenXRProvider
 	url = https://github.com/1runeberg/OpenXRProvider.git
-[submodule "src/hand_urdf_discription"]
-	path = src/hand_urdf_discription
+[submodule "src/hand_urdf_description"]
+	path = src/hand_urdf_description
 	url = https://github.com/Hokyun-Lee/hand_urdf_discription.git
 [submodule "src/vr/third_party/OpenXRProvider2"]
 	path = src/vr/third_party/OpenXRProvider2

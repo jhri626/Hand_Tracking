@@ -1,11 +1,24 @@
+/**
+ * Ik.cpp
+ * Inverse kinematics solvers for thumb and finger joint angle computation.
+ * Uses Ceres optimizer for 2-DOF thumb IK and analytical methods for finger angles.
+ */
+
+/**
+ * Ik.cpp
+ * Inverse kinematics solvers for thumb and finger joint angle computation.
+ * Uses Ceres optimizer for 2-DOF thumb IK and analytical methods for finger angles.
+ */
+
 #define _USE_MATH_DEFINES
 #include <ik.h>
 #include <Eigen/Geometry>
 #include <lie_utils.h>
-#include "utils.h"
 
-
-
+/**
+ * Solves 2-DOF inverse kinematics for thumb joint angles.
+ * Uses Ceres-based optimization to compute flexion-extension and abduction-adduction angles.
+ */
 namespace ik {
     Eigen::Vector2d inversekinematics(
         const rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr& pub,                  
@@ -227,9 +240,11 @@ namespace ik {
     //     // 4) Return optimized angles
 
 
-
-
-        Eigen::Vector2d Anyteleopmethod(
+/**
+ * Computes finger joint angles using Position Retargeting method.
+ * Optimizes flexion and abduction angles based on intermediate and tip positions.
+ */
+        Eigen::Vector2d PositionRetargeting(
             const Eigen::Quaterniond q_ref, 
             const Eigen::Vector3d p_ref, 
             const geometry_msgs::msg::Pose& pose_inter,
@@ -247,9 +262,8 @@ namespace ik {
             Eigen::Matrix4d T_inter = mr::computeRelativeSE3(q_ref, p_ref, q_inter, p_inter);
             double alpha = 1.2;
             Eigen::Vector3d target_pos = alpha * T_rel.block<3,1>(0,3) * 1000 ;
-            Eigen::Vector3d inter_pos = alpha * T_rel.block<3,1>(0,3) * 1000 ;
-            // std::cout<< "L1 :"<<L1<<", L2 : "<<L2<<std::endl;
-            // std::cout<< "Target :"<<target_pos<<std::endl;
+            Eigen::Vector3d inter_pos = alpha * T_inter.block<3,1>(0,3) * 1000 ;
+            
             
             double theta[2] = {d_pre,AA};
             // double theta[2] = {22.4,0.0};
@@ -282,7 +296,7 @@ namespace ik {
 
             problem.SetParameterLowerBound(theta, 0, 0);
             problem.SetParameterUpperBound(theta, 0, 1.3);   
-            problem.SetParameterLowerBound(theta, 1, -0.5);
+            problem.SetParameterLowerBound(theta, 1, -0.7);
             problem.SetParameterUpperBound(theta, 1, 0.5);
 
             ceres::Solver::Options options;

@@ -62,8 +62,11 @@ class WebcamPublisher(Node):
             
         # 1. Resize and flip the frame (Processing logic preserved)
         frame_resized = cv2.resize(frame, (self.target_width, self.target_height))
-        # Flip the frame vertically (0) as per the original ROS 1 code.
-        frame_flipped = cv2.flip(frame_resized, 0) 
+        
+        frame_flipped = cv2.flip(frame_resized, 0)
+        
+        # frame_flipped = frame_resized
+        # frame_flipped = cv2.flip(frame_flipped, 1)
         
         # 2. Publish to ROS topic
         try:
@@ -77,7 +80,7 @@ class WebcamPublisher(Node):
             return
 
         # 3. Show locally and check for quit key
-        cv2.imshow("Webcam View", frame_resized) # Display the frame
+        cv2.imshow("Webcam View", frame_flipped) # Display the frame
         
         # cv2.waitKey is necessary inside the timer_callback for GUI events to process
         key = cv2.waitKey(1)

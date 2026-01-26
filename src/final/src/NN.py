@@ -1,11 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-ROS 2 node for Skeleton2Mesh-based hand-angle inference (NumPy only).
-
-Flow:
-Flow:
-  HandSyncData -> NumPy model (Skeleton2AngleNumPy) -> Float32MultiArray
-* Compatible with Python 3 (ROS 2).
+ROS 2 node for model hand-angle inference (NumPy only).
+Updated to match the new PyTorch architecture with FiLM and Shared Backbone.
+Compatible with Python 3 (ROS 2).
 """
 
 import rclpy
@@ -17,11 +15,10 @@ from bone import bone_parents, bone_children   # length 19
 from vr.msg import HandSyncData
 from scipy.signal import butter, lfilter, lfilter_zi
 
-
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/best_val_loss_test2.npz'
+MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/best_val_loss_rot6d.npz'
 
 NUM_JOINTS = 20
 NUM_BONES  = 19
@@ -29,33 +26,48 @@ PE_FREQ_BK = 5
 PE_FREQ_OK = 2
 GSD_DIM    = 100
 NEG_SLOPE  = 0.01                 # LeakyReLU slope
+ORI_DIM    = 6                    # rot6d (Updated from 3)
 
 INPUT_TOPIC  = '/hand_sync_data'
 OUTPUT_TOPIC = '/model_out'
 KEYWORDS     = [0, 21, 22, 23, 24, 25]   # joints to skip
+RADTODEG = 180.0 / np.pi
 
 # --------------------------------------------------------------------------- #
 # NumPy model (Skeleton2Mesh replica)
 # --------------------------------------------------------------------------- #
 class Skeleton2AngleNumPy(object):
-    """Pure-NumPy implementation reproducing the PyTorch Skeleton2Mesh forward."""
+    """Pure-NumPy implementation reproducing the NEW PyTorch Skeleton2Mesh with FiLM."""
     def __init__(self, npz_path):
-        self.params = {k: v.astype(np.float32) for k, v in np.load(npz_path).items()}
+        # Load weights
+        try:
+            loaded = np.load(npz_path, allow_pickle=True)
+        except:
+            loaded = np.load(npz_path)
+            
+        self.params = {}
+        for k, v in loaded.items():
+            self.params[k] = v.astype(np.float32)
+            
+        print(f"Loaded {len(self.params)} parameters.")
 
     # --------------------------------------------------------------------- #
     # Basic ops
     # --------------------------------------------------------------------- #
     @staticmethod
     def gelu(x):
-        return 0.5 * x * (1. + erf(x / np.sqrt(2., dtype=x.dtype)))
+        # PyTorch GELU approximation
+        return 0.5 * x * (1.0 + erf(x / np.sqrt(2.0)))
 
     @staticmethod
     def leaky_relu(x, neg_slope=NEG_SLOPE):
         return np.where(x >= 0, x, neg_slope * x)
 
     def linear(self, x, prefix):
-        """x: (..., in_features) -> (..., out_features)"""
-        w = self.params[prefix + '.weight']            # (out, in)
+        """
+        Applies Linear layer: xW^T + b
+        """
+        w = self.params[prefix + '.weight']
         b = self.params[prefix + '.bias']
         return np.dot(x, w.T) + b
 
@@ -66,103 +78,151 @@ class Skeleton2AngleNumPy(object):
     def position_encoding(x, num_freqs):
         """
         x: ndarray [..., D]
-        returns ndarray [..., D * 2 * num_freqs] (sin|cos concatenation)
+        returns ndarray [..., D * 2 * num_freqs]
         """
-        freqs = (2.0 ** np.arange(num_freqs, dtype=x.dtype)) * np.pi   # (L,)
-        x_exp = x[..., None] * freqs                                   # [..., D, L]
+        # freqs: (L,)
+        freqs = (2.0 ** np.arange(num_freqs, dtype=x.dtype)) * np.pi 
+        x_exp = x[..., None] * freqs                                       # [..., D, L]
         sin   = np.sin(x_exp)
         cos   = np.cos(x_exp)
-        pe    = np.concatenate([sin, cos], axis=-1)                    # [..., D, 2L]
+        pe    = np.concatenate([sin, cos], axis=-1)                        # [..., D, 2L]
+        
+        # Flatten last 2 dims: (..., D * 2L)
         new_shape = x.shape[:-1] + (-1,)
-        return pe.reshape(new_shape)                           # flatten
+        return pe.reshape(new_shape)
+
+    # --------------------------------------------------------------------- #
+    # Module: FiLM Interaction (New)
+    # --------------------------------------------------------------------- #
+    def film_interaction(self, features, condition):
+        """
+        Mimics FiLMInteraction module.
+        features:  [B, gsd_dim]
+        condition: [B, cond_dim] (orientation)
+        """
+        # cond_mlp: Linear -> LeakyReLU -> Linear
+        x = self.linear(condition, 'film_interaction.cond_mlp.0')
+        x = self.leaky_relu(x)
+        modulation = self.linear(x, 'film_interaction.cond_mlp.2') # [B, gsd_dim * 2]
+        
+        # Split into gamma, beta
+        # modulation shape is (B, 200) if gsd_dim=100
+        gamma, beta = np.split(modulation, 2, axis=-1)
+        
+        # Apply FiLM: out = features * (1 + gamma) + beta
+        out = features * (1.0 + gamma) + beta
+        return out
+
+    # --------------------------------------------------------------------- #
+    # Module: BoneInteraction
+    # --------------------------------------------------------------------- #
+    def bone_interaction(self, x):
+        """
+        Mimics BoneInteraction module.
+        Input x: [B, num_bones, dim]
+        Logic: Transpose -> Mixing MLP -> Transpose -> Residual
+        """
+        # 1. Transpose: [B, num_bones, dim] -> [B, dim, num_bones]
+        x_T = x.transpose(0, 2, 1)
+
+        # 2. Mixing (MLP on num_bones dimension)
+        # interaction.mixing: Linear -> LeakyReLU -> Linear
+        h = self.linear(x_T, 'interaction.mixing.0')
+        h = self.leaky_relu(h)
+        delta = self.linear(h, 'interaction.mixing.2')
+
+        # 3. Transpose back + Residual
+        return x + delta.transpose(0, 2, 1)
 
     # --------------------------------------------------------------------- #
     # Forward pass
     # --------------------------------------------------------------------- #
     def forward(self, skeletons_data):
         """
-        Input : skeletons_flat (B, 64) - 20 joints * 3 coords + 3 euler angle.
-        Output: (B, 3) - angle vector (no scaling applied).
+        Input : skeletons_data (B, 60 + ORI_DIM)
+        Output: (B, 3)
         """
         B = skeletons_data.shape[0]
 
-        ori = skeletons_data[:, -3:]                     # (B,3)
-        flat_joints = skeletons_data[:, :-3]             # (B,60)
+        # 1. Split input (Orientation is at the end)
+        ori = skeletons_data[:, -ORI_DIM:]             # (B, ORI_DIM)
+        flat_joints = skeletons_data[:, :-ORI_DIM]     # (B, 60)
 
-        # 1 | reshape joints
-        skel = flat_joints.reshape(B, NUM_JOINTS, 3)                # (B,20,3)
+        # --- Data Prep ---
+        skel = flat_joints.reshape(B, NUM_JOINTS, 3)                # (B, 20, 3)
 
-        # 2 | bone endpoints
-        parents  = skel[:, bone_parents, :]                            # (B,20,3)
+        # Bone endpoints
+        parents  = skel[:, bone_parents, :]                         # (B, 19, 3)
         children = skel[:, bone_children, :]
-        Bk = np.concatenate([parents, children], axis=-1)              # (B,20,6)
+        Bk = np.concatenate([parents, children], axis=-1)           # (B, 19, 6)
 
-        # 3 | positional encodings
-        pe_bk = self.position_encoding(Bk, PE_FREQ_BK)                 # (B,20,60)
+        # Positional Encodings
+        pe_bk = self.position_encoding(Bk, PE_FREQ_BK)              # (B, 19, 60)
 
-        eye_nb = np.eye(NUM_BONES, dtype=np.float32)                   # (20,20)
-        ok     = np.broadcast_to(eye_nb, (B, NUM_BONES, NUM_BONES))    # (B,20,20)
-        pe_ok  = self.position_encoding(ok, PE_FREQ_OK)                # (B,20,76)
+        eye_nb = np.eye(NUM_BONES, dtype=np.float32)
+        ok     = np.broadcast_to(eye_nb, (B, NUM_BONES, NUM_BONES)) # (B, 19, 19)
+        pe_ok  = self.position_encoding(ok, PE_FREQ_OK)             # (B, 19, 76)
 
-        # 4 | global spatial descriptor g
-        flat = skel.reshape(B, -1)                                     # (B,60)
-        g    = self.linear(flat, 'gsd_mlp.0')
-        g    = self.gelu(g)
-        g    = self.linear(g, 'gsd_mlp.2')
-        g    = self.gelu(g)
-        g    = self.linear(g, 'gsd_mlp.4')                             # (B,100)
-        g    = g[:, None, :].repeat(NUM_BONES, axis=1)                 # (B,20,100)
-
-        oe = np.dot(ori, self.params['orientation_embed.weight'].T) + self.params['orientation_embed.bias']
-        oe = oe[:, None, :].repeat(NUM_BONES, axis=1)      # (B,20,3)
-
-
-        # 5 | OE feature
-        OE = np.concatenate([pe_bk, pe_ok, g, oe], axis=-1)
-
+        # --- Global Spatial Descriptor (GSD) & FiLM ---
+        flat = skel.reshape(B, -1)                                  # (B, 60)
         
-        # --- four heads -------------------------------------------------- #
-        def head(OE, name):                                            # -> (B,20,C)
-            h = self.linear(OE, name + '.0')
-            h = self.leaky_relu(h)
-            h = self.linear(h, name + '.2')
-            h = self.leaky_relu(h)
-            h = self.linear(h, name + '.4')
-            return h
+        # gsd_mlp: Linear->GELU->Linear->GELU->Linear
+        g = self.linear(flat, 'gsd_mlp.0')
+        g = self.gelu(g)
+        g = self.linear(g, 'gsd_mlp.2')
+        g = self.gelu(g)
+        g_feature = self.linear(g, 'gsd_mlp.4')                     # (B, 100)
 
-        out1 = head(OE, 'head1')                                       # (B,20,1)
-        out2 = head(OE, 'head2')                                       # (B,20,1)
-        out3 = head(OE, 'head3')                                       # (B,20,1)
-        
+        # Apply FiLM (Modulate GSD with Orientation)
+        g_final = self.film_interaction(g_feature, ori)             # (B, 100)
 
-        # --- pooling along bone dim ------------------------------------- #
-        def pool(x, pool_name):                                        # (B,C,20) or (B,20)
-            w = self.params[pool_name + '.weight']                     # (1,20)
-            b = self.params[pool_name + '.bias'][0]                    # scalar
-            return (x * w).sum(axis=-1) + b                            # (B,C) or (B,)
+        # Expand to bone dimension
+        # (B, 100) -> (B, 1, 100) -> (B, 19, 100)
+        g_expanded = g_final[:, None, :].repeat(NUM_BONES, axis=1)
 
-        # out1 / out2: transpose bones last -> last dim
-        o1 = out1.squeeze(-1)                                          # (B,20)
-        o2 = out2.squeeze(-1)                                          # (B,20)
+        # Construct OE feature
+        # New: [pe_bk, pe_ok, g_expanded]
+        OE = np.concatenate([pe_bk, pe_ok, g_expanded], axis=-1)
 
-        # out3 / out4: squeeze last singleton
-        o3 = out3.squeeze(-1)                                          # (B,20)
-        
+        # --- Bone Interaction ---
+        OE = self.bone_interaction(OE)
 
-        agg1 = pool(o1, 'pool1')[:, None]                              # (B,1)
-        agg2 = pool(o2, 'pool2')[:, None]
-        agg3 = pool(o3, 'pool3')[:, None]
+        # --- Shared Backbone ---
+        # shared_backbone: Linear -> LeakyReLU -> Linear -> LeakyReLU
+        features = self.linear(OE, 'shared_backbone.0')
+        features = self.leaky_relu(features)
+        features = self.linear(features, 'shared_backbone.2')
+        features = self.leaky_relu(features)                        # (B, 19, hidden_dim)
 
-        # concat -> (B,8)
+        # --- Lightweight Heads ---
+        out1 = self.linear(features, 'head1') # (B, 19, 1)
+        out2 = self.linear(features, 'head2') # (B, 19, 1)
+        out3 = self.linear(features, 'head3') # (B, 19, 1)
+
+        # --- Pooling along bone dim ---
+        o1 = out1.squeeze(-1) # (B, 19)
+        o2 = out2.squeeze(-1)
+        o3 = out3.squeeze(-1)
+
+        # pool layers: Linear(19, 1)
+        agg1 = self.linear(o1, 'pool1')
+        agg2 = self.linear(o2, 'pool2')
+        agg3 = self.linear(o3, 'pool3')
+
+        # Concat -> (B, 3)
         return np.concatenate([agg1, agg2, agg3], axis=-1).astype(np.float32)
 
+
 # --------------------------------------------------------------------------- #
-# ROS node wrapper
+# ROS Node Wrapper
 # --------------------------------------------------------------------------- #
 class InferenceNode(Node):
-    """ROS 1 node that embeds Skeleton2AngleNumPy and publishes 8-D predictions."""
+    """ROS 2 node that embeds Skeleton2AngleNumPy and publishes 8-D predictions."""
     def __init__(self):
         super().__init__('skeleton2angle_inference')
+
+        self.declare_parameter('mode', 'model')
+        self.mode = self.get_parameter('mode').value
 
         # Load model
         try:
@@ -176,20 +236,19 @@ class InferenceNode(Node):
         # --- Butterworth filter design ----------------------------------
         order      = 2        # 2nd-order IIR
         fs         = 60.0     # Callback frequency (Hz)
-        fc         = 10.0      # filtter frequency (Hz)
+        fc         = 10.0     # cutoff frequency (Hz)
         nyq        = 0.5 * fs
         normal_cut = fc / nyq
 
-        # IIR factor compute
         self.b, self.a = butter(order, normal_cut, btype='low', analog=False)
-        zi_base       = lfilter_zi(self.b, self.a)
-        # inintialize for 3d vector
+        zi_base        = lfilter_zi(self.b, self.a)
+        
+        # initialize filter state for 3d vector
         self.zi_filter = [zi_base * 0.0 for _ in range(3)]
         
         # Exponential Moving Average parameters
-        # smoothing factor alpha: higher -> output tracks new values more closely
         self.ema_alpha = 0.1
-        self.ema       = None  # stores previous EMA value, shape (1,8)
+        self.ema       = None  # stores previous EMA value, shape (3,)
 
         # ROS I/O
         self.pub = self.create_publisher(Float32MultiArray, OUTPUT_TOPIC, 1)
@@ -205,66 +264,76 @@ class InferenceNode(Node):
     def _flatten_posearray(self, msg):
         """PoseArray -> flat list of 60 floats (skip KEYWORDS joints)."""
         data = []
-        # ori = msg.poses[0].orientation
-        # data.extend([ori.x, ori.y, ori.z, ori.w])
-
         for idx, p in enumerate(msg.poses):
             if idx in KEYWORDS:
                 continue
             data.extend([
                 p.position.x, p.position.y, p.position.z
             ])
-
-            # data.extend([p.position.x, p.position.y, p.position.z,
-                        #  p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w])
-            # data.extend([p.position.x, p.position.y, p.position.z])
         return np.asarray(data, np.float32)
 
     # --------------------------------------------------------------------- #
     def callback(self, msg):
-
         if self.model is None:
-            self.get_logger().warn('Model not loaded, skipping inference.')
             return
         
+        
         try:
-            x_flat = self._flatten_posearray(msg.pose_array)[None, :]             # (1,60)
-            extra = np.array(msg.angles[-3:], dtype=np.float32).reshape(1, 3)
-            x_flat = np.concatenate([x_flat, extra], axis=1)
+            # 1. Flatten Joints
+            x_flat = self._flatten_posearray(msg.pose_array)[None, :]             
+            
+            # 2. Extract Orientation (Last ORI_DIM elements)
+            extra = np.array(msg.angles[-ORI_DIM:], dtype=np.float32).reshape(1, ORI_DIM)
+            
+            # 3. Concatenate
+            x_input = np.concatenate([x_flat, extra], axis=1) # (1, 60 + ORI_DIM)
 
-
-            if x_flat.shape[1] != NUM_JOINTS * 3 + 3:
-                self.get_logger().warn('Unexpected input length %d' % x_flat.shape[1])
+            if x_input.shape[1] != NUM_JOINTS * 3 + ORI_DIM:
+                self.get_logger().warn('Unexpected input length %d' % x_input.shape[1])
                 return
 
-            out = self.model.forward(x_flat)                           # (1,3)
-            out_vec = out.flatten()  # shape (3,)
+            # 4. Inference
+            if self.mode == "model":
+                out = self.model.forward(x_input)                           
+                out_vec = out.flatten()                                     
 
-            filtered = np.zeros_like(out_vec)
-            for i in range(3):
-                y, self.zi_filter[i] = lfilter(
-                    self.b, self.a,
-                    [out_vec[i]],
-                    zi=self.zi_filter[i]
-                )
-                filtered[i] = y[0]
+                # 5. Filtering (LPF)
+                filtered = np.zeros_like(out_vec)
+                for i in range(3):
+                    y, self.zi_filter[i] = lfilter(
+                        self.b, self.a,
+                        [out_vec[i]],
+                        zi=self.zi_filter[i]
+                    )
+                    filtered[i] = y[0]
 
-            if self.ema is None:
-                self.ema = filtered.copy()
+                # 6. EMA
+                if self.ema is None:
+                    self.ema = filtered.copy()
+                else:
+                    self.ema = (
+                        self.ema_alpha * filtered
+                        + (1.0 - self.ema_alpha) * self.ema
+                    )
+
+                # 7. Construct Output (Apply Rad->Deg conversion)
+                final_out = np.array(msg.angles[:-ORI_DIM], dtype=np.float32).reshape(8)
+                final_out[1:4] = self.ema * RADTODEG
+            elif self.mode == "baseline":
+                final_out = np.array(msg.angles[:-ORI_DIM], dtype=np.float32).reshape(8)
+                final_out[1:4] = final_out[1:4] * RADTODEG
             else:
-                self.ema = (
-                    self.ema_alpha * filtered
-                    + (1.0 - self.ema_alpha) * self.ema
-                )
+                self.get_logger().warn(f'Unknown mode: {self.mode}')
+                return
 
-            final_out = np.array(msg.angles[:-3], dtype=np.float32).reshape(8)
-            final_out[1:4] = self.ema
 
-            # print(final_out.shape,extra.shape)
+
+            # 8. Publish
+            # Combine prediction with raw orientation for debugging
             data_out = np.concatenate([final_out, extra.squeeze()], axis=0)
+            
             self.pub.publish(Float32MultiArray(data=final_out.tolist()))
             self.pub_data.publish(Float32MultiArray(data=data_out.tolist()))
-
 
         except Exception as e:
             self.get_logger().error('Inference error: %s' % e)

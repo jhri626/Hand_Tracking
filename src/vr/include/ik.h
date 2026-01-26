@@ -38,7 +38,7 @@ namespace ik {
   //   const geometry_msgs::Pose& pose_target,
   //   double L1, double L2, double theta_init_1, double theta_init_2,double theta_init_3, const std::string& mode);
 
-    Eigen::Vector2d Anyteleopmethod(const Eigen::Quaterniond q_ref,
+    Eigen::Vector2d PositionRetargeting(const Eigen::Quaterniond q_ref,
                                   const Eigen::Vector3d p_ref,
                                   const geometry_msgs::msg::Pose& pose_inter,
                                   const geometry_msgs::msg::Pose& pose_target,
@@ -47,8 +47,6 @@ namespace ik {
                                   int idx);
 
 
-  // Compute MCP flexion angle from prismatic displacement d
-    // float computeMCPFlexionFromD(float d);
   
   
   // Cost functor for Ceres Solver
@@ -64,9 +62,6 @@ namespace ik {
   
     template <typename T>
     bool operator()(const T* const theta, T* residual) const {
-      // T x = ceres::cos(M_PI *9/18) * ( - T(L2_) * ceres::sin(theta[1]) ) - ceres::sin(M_PI *9/18) * ( - T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]));
-      // T y = ceres::sin(M_PI *9/18) * ( - T(L2_) * ceres::sin(theta[1]) ) + ceres::cos(M_PI *9/18) * ( - T(L2_) * ceres::cos(theta[1]) * ceres::sin(theta[0]));
-      // T z = - T(L1_) - T(L2_) * ceres::cos(theta[0]) * ceres::cos(theta[1]);
       T x =  T(L2_) * ceres::sin(theta[0]);
       T y = - ceres::sin(theta[1]) * ( T(L1_) + T(L2_) * ceres::cos(theta[0]));
       T z = - ceres::cos(theta[1]) * ( T(L1_) + T(L2_) * ceres::cos(theta[0]));
@@ -183,6 +178,8 @@ struct EEPositionFromDA_Functor {
 
 
       T quat[4] = { T(0.67797271), T(0.1477154), T(0.57223282), T(0.43713013) };
+      // T quat[4] = { T(1.0), T(0.0), T(0.0), T(0.0) };
+
 
       T ee_finger[3] = { x, y, z };
       T inter_finger[3] ={ inter_x, inter_y, inter_z};

@@ -19,6 +19,7 @@
 #include <future>
 #include <memory>
 #include <thread>
+#include <algorithm>
 
 #include <OpenXRProvider.h>
 #include <cv_bridge/cv_bridge.h>
@@ -39,9 +40,8 @@
 #include "HMD_number.h"
 #include "utils.h"
 #include "pose_utils.h"
-#include <ik.h>
 #include "vr/msg/hand_sync_data.hpp"
-#include <algorithm>
+
 
 
 
@@ -75,7 +75,7 @@ public:
     void publishHMDPose(const rclcpp::Time& stamp);
     void locateHandJoints();
     bool updatePoseArray(const rclcpp::Time& stamp);
-    void computeJointAngles(const rclcpp::Time& stamp);
+    void publishJointAngles(const rclcpp::Time& stamp);
     void renderAndSubmitFrame(const XrFrameState& frameState);
     void imageCallback(const sensor_msgs::msg::Image::SharedPtr msg);
     void currentCallback(const std_msgs::msg::Float32MultiArray::SharedPtr msg);

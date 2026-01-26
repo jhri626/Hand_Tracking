@@ -23,3 +23,6 @@ exp/
 install/
 log/
 tracker_tools/
+temp/
+
+!/images/**

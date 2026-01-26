@@ -1,21 +1,23 @@
+/**
+ * pose_utils.cpp
+ * Pose and geometry utilities for hand joint angle computation.
+ * Provides functions for Euler angle conversion, quaternion math, and joint angle calculation.
+ */
+
 #define _USE_MATH_DEFINES
-#include <rclcpp/rclcpp.hpp>
-#include <geometry_msgs/msg/pose.hpp>
-#include <geometry_msgs/msg/vector3.hpp>
-#include <visualization_msgs/msg/marker.hpp>
 
-#include <Eigen/Geometry>
-#include <cmath>
-#include <iostream>
-
-#include "utils.h"
 #include "pose_utils.h"
+#include "utils.h"
+
 
 #include <algorithm>
 using std::min;
 using std::max;
 
-
+/**
+ * Creates an arrow marker for RViz visualization.
+ * Generates a visual arrow from start position along a direction vector.
+ */
 visualization_msgs::msg::Marker vectorToArrowMarker(
     const Eigen::Vector3d& start,
     const Eigen::Vector3d& vec,
@@ -56,8 +58,10 @@ visualization_msgs::msg::Marker vectorToArrowMarker(
 
 namespace pose_utils {
 
-    
-    // Function to convert a geometry_msgs::Pose's quaternion into Euler angles (roll, pitch, yaw)
+/**
+ * Computes relative Euler angles between two poses.
+ * Converts quaternion difference to roll-pitch-yaw representation.
+ */
     geometry_msgs::msg::Vector3 poseToEulerAngles(
     const geometry_msgs::msg::Pose& pose_ref,
     const geometry_msgs::msg::Pose& pose_target
@@ -82,12 +86,6 @@ namespace pose_utils {
         double yaw   = std::atan2(2.0 * (q_relative.w() * q_relative.z() + q_relative.x() * q_relative.y()),
             1.0 - 2.0 * (q_relative.y() * q_relative.y() + q_relative.z() * q_relative.z()));
 
-        // std::cout << "Euler angles (radians):\n";
-        // std::cout << "Roll: "  << roll  << ", Pitch: " << pitch << ", Yaw: " << yaw << "\n";
-        // std::cout << "Euler angles (degrees):\n";
-        // std::cout << "Roll: "  << roll * 180.0 / M_PI  
-        //           << ", Pitch: " << pitch * 180.0 / M_PI 
-        //           << ", Yaw: " << yaw * 180.0 / M_PI << "\n";
         geometry_msgs::msg::Vector3 euler_angles;
         euler_angles.x = roll;
         euler_angles.y = pitch;
@@ -96,7 +94,10 @@ namespace pose_utils {
         return euler_angles;
     }
 
-
+/**
+ * Computes relative rotation between two quaternions.
+ * Returns the quaternion that rotates from reference to target orientation.
+ */
     Eigen::Quaterniond computeRelativeQuaternion(const Eigen::Quaterniond &q_ref, 
         const Eigen::Quaterniond &q_target) {
     // For unit quaternions, the inverse is equal to the conjugate.
@@ -104,6 +105,10 @@ namespace pose_utils {
     return q_ref.conjugate() * q_target;
     }
 
+/**
+ * Computes the normal vector of a plane defined by three joint positions.
+ * Uses cross product of vectors from metacarpal to two proximal positions.
+ */
     Eigen::Vector3d computePlane(
     const geometry_msgs::msg::Pose& pose_meta,
     const geometry_msgs::msg::Pose& pose_proxi_1,
@@ -125,6 +130,10 @@ namespace pose_utils {
         return normal;
     }
 
+/**
+ * Computes the angle between two 3D vectors in degrees.
+ * Uses dot product and arc cosine for angle calculation.
+ */
     double computeAngle(
         const Eigen::Vector3d &v1,
         const Eigen::Vector3d &v2 )
@@ -143,6 +152,10 @@ namespace pose_utils {
         return angle_deg;
     }
 
+/**
+ * Computes finger joint flexion-extension and abduction-adduction angles.
+ * Calculates angles based on metacarpal, proximal, and intermediate joint positions.
+ */
     Eigen::Vector2d jointAngle(
         const Eigen::Vector3d& normal,
         const geometry_msgs::msg::Pose& pose_meta,
