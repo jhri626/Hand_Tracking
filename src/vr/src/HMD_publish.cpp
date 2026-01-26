@@ -140,13 +140,6 @@ bool HMD::updatePoseArray(const ros::Time& stamp)
             ->GetHandJointLocations(XR_HAND_LEFT_EXT)
             ->jointLocations[jointIdx];
 
-<<<<<<< HEAD
-        std::cout<<pose_array.poses[i]<<std::endl;
-        std::cout<<pose_array.poses[i]<<std::endl;
-        if ((leftLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) &&
-            (leftLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)) {
-            
-=======
         auto rightLoc = pXRHandTracking
             ->GetHandJointLocations(XR_HAND_RIGHT_EXT)
             ->jointLocations[jointIdx];
@@ -155,7 +148,6 @@ bool HMD::updatePoseArray(const ros::Time& stamp)
         if ((leftLoc.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) ||
             (leftLoc.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT))
         {
->>>>>>> dev
             geometry_msgs::Pose p;
             p.position.x = leftLoc.pose.position.x;
             p.position.y = leftLoc.pose.position.y;
@@ -165,11 +157,6 @@ bool HMD::updatePoseArray(const ros::Time& stamp)
             p.orientation.y = leftLoc.pose.orientation.y;
             p.orientation.z = leftLoc.pose.orientation.z;
             p.orientation.w = leftLoc.pose.orientation.w;
-<<<<<<< HEAD
-            // pose_array.poses[i] = p;
-         
-            std::cout<<pose_array.poses[i]<<std::endl;
-=======
 
             // using both hand is not supported now
             if (jointIdx == XR_HAND_JOINT_PALM_EXT)
@@ -201,7 +188,6 @@ bool HMD::updatePoseArray(const ros::Time& stamp)
 
             transformHMDtoRobot(tfMsg, false, true);
             tf_broadcaster.sendTransform(tfMsg);
->>>>>>> dev
         }
 
         // ---------------- Right hand ----------------
@@ -248,56 +234,6 @@ bool HMD::updatePoseArray(const ros::Time& stamp)
     return tracking_valid;
 }
 
-<<<<<<< HEAD
-Eigen::Vector2d HMD::computeThumbAngles(
-    const geometry_msgs::PoseArray& poses,
-    const Eigen::Quaterniond& q_wrist,
-    const Eigen::Vector3d& p_wrist,
-    double smoothing_gamma
-) {
-    double L1 = (getPositionfromArray(poses, XR_HAND_JOINT_THUMB_PROXIMAL_EXT) - p_wrist).norm();
-    double L2 = (getPositionfromArray(poses, XR_HAND_JOINT_THUMB_DISTAL_EXT)   - getPositionfromArray(poses, XR_HAND_JOINT_THUMB_PROXIMAL_EXT)).norm();
-    auto newaxis = mr::axis_align(q_wrist, p_wrist - getPositionfromArray(poses, XR_HAND_JOINT_THUMB_METACARPAL_EXT));
-    Eigen::Vector2d angles = ik::inversekinematics(
-        marker_pub, newaxis, p_wrist,
-        poses.poses[XR_HAND_JOINT_THUMB_TIP_EXT],
-        L1, L2, FE_joint[0], AA_joint[0]
-    );
-    // exponential smoothing
-    FE_joint[0] = (1 - smoothing_gamma) * FE_joint[0] + smoothing_gamma * angles.x() * 180/M_PI;
-    AA_joint[0] = (1 - smoothing_gamma) * AA_joint[0] + smoothing_gamma * angles.y() * 180/M_PI;
-    return { AA_joint[0], FE_joint[0] };
-}
-
-
-Eigen::Vector2d HMD::computeFingerAngles(
-    const geometry_msgs::PoseArray& poses,
-    int idx,                        // finger index 1..3
-    const Eigen::Vector3d& y_axis,
-    double smoothing_gamma
-) {
-    int base = FINGER_JOINT_INDICES[2*(idx-1)];
-    int tip  = FINGER_JOINT_INDICES[2*(idx-1)+1];
-    auto euler  = pose_utils::poseToEulerAngles(poses.poses[base], poses.poses[tip]);
-    auto angles = pose_utils::jointAngle(marker_pub, y_axis,
-                                         poses.poses[1+5*idx],
-                                         poses.poses[2+5*idx],
-                                         poses.poses[3+5*idx]);
-    double AA = std::isnan(euler.y) ? 0.0 : angles.y();
-    double FE = std::isnan(euler.x) ? 0.0 : euler.x * 180.0 / M_PI;
-    // smoothing
-    AA_joint[idx] = (1 - smoothing_gamma) * AA_joint[idx] + smoothing_gamma * AA;
-    FE_joint[idx] = (1 - smoothing_gamma) * FE_joint[idx] + smoothing_gamma * FE;
-    return { AA_joint[idx], FE_joint[idx] };
-}
-
-void HMD::computeJointAngles(const ros::Time& stamp) {
-
-    latest_angles.clear();
-    latest_angles.resize(2 * fingernum_ + 3);
-=======
-
->>>>>>> dev
 
 
 /**
@@ -316,15 +252,6 @@ void HMD::leftHandToRightHand(
     Eigen::Vector3d planeNormal(-1,0,0);
     Eigen::Matrix3d M = Eigen::Matrix3d::Identity() - 2.0 * planeNormal * planeNormal.transpose();
 
-<<<<<<< HEAD
-    Eigen::Quaterniond q_palm  = getQuaternionfromArray(pose_array, XR_HAND_JOINT_PALM_EXT);
-    Eigen::Quaterniond q_wrist = getQuaternionfromArray(pose_array, XR_HAND_JOINT_WRIST_EXT);
-    Eigen::Matrix3d mat = q_palm.normalized().toRotationMatrix();
-    Eigen::Vector3d y_axis = mat.col(1);
-    Eigen::Vector3d p_wrist = getPositionfromArray(pose_array, XR_HAND_JOINT_WRIST_EXT);
-    
-    auto thumb_ang = computeThumbAngles(pose_array, q_wrist, p_wrist, gamma);
-=======
     // Extra flip matrix for x-axis
     Eigen::Matrix3d Fx = Eigen::Matrix3d::Identity();
     Fx(0,0) = -1;
@@ -424,12 +351,8 @@ void HMD::publishJointAngles(const ros::Time& stamp) {
     latest_angles.resize(2 * fingernum_ + 6);
 
     const size_t n = kSpecificIndices.size();
->>>>>>> dev
 
 
-<<<<<<< HEAD
-
-=======
     Eigen::Quaterniond q_palm  = getQuaternionfromArray(pose_array, XR_HAND_JOINT_PALM_EXT);
     Eigen::Quaterniond q_wrist = getQuaternionfromArray(pose_array, XR_HAND_JOINT_WRIST_EXT);
     Eigen::Matrix3d mat = q_palm.normalized().toRotationMatrix();
@@ -439,7 +362,6 @@ void HMD::publishJointAngles(const ros::Time& stamp) {
     auto thumb_ang = computeThumbAngles(pose_array, q_wrist, p_wrist, gamma);
     
     // thumb
->>>>>>> dev
     latest_angles[0] = thumb_ang[0] ; // AA
     latest_angles[fingernum_] = thumb_ang[1]  ; // FE
 
@@ -468,11 +390,6 @@ void HMD::publishJointAngles(const ros::Time& stamp) {
     q.normalize();
     Eigen::Matrix3f rot_mat = q.toRotationMatrix();
 
-<<<<<<< HEAD
-    latest_angles[2*fingernum_] = euler.x;
-    latest_angles[2*fingernum_ + 1] = euler.y;
-    latest_angles[2*fingernum_ + 2] = euler.z;
-=======
     int base_idx = 2 * fingernum_; 
 
     // Row 0 (r00, r01)
@@ -551,7 +468,6 @@ void HMD::publishJointAngles(const ros::Time& stamp) {
     transformPoseArrayToBase(network_input);
 
 
->>>>>>> dev
 
     vr::HandSyncData sync_msg;
     sync_msg.header.stamp = stamp;
