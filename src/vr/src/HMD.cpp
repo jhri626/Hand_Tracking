@@ -1,7 +1,14 @@
+/**
+ * HMD.cpp
+ * Core HMD class implementation with constructor, destructor, and initialization methods.
+ * Manages ROS node creation, OpenXR setup, hand tracking initialization, and main publishing loop.
+ */
+
+
 // #define XR_USE_GRAPHICS_API_OPENGL
 #include <iostream>
 #include <memory>
-#include <spdlog/spdlog.h>
+// #include <spdlog/spdlog.h>
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
 #include <cv_bridge/cv_bridge.h>
@@ -9,14 +16,18 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <std_msgs/Float32MultiArray.h>
 #include <std_msgs/Int8.h>
-#include <OpenXRProvider.h>
+#include "HMD.h"
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 #include <GL/gl.h>
 #include <thread>
-#include "HMD.h"
 #include <mutex>
 
+
+/**
+ * HMD constructor - initializes member variables and pre-allocates data structures.
+ * Sets up default joint angles, smoothing parameters, and pose array sizing.
+ */
 HMD::HMD(int arc, char *arv[])
 {
 
@@ -62,11 +73,16 @@ HMD::HMD(int arc, char *arv[])
     fingernum_ = 4;
     m_Index_ik = {-M_PI/36,-M_PI/36,-M_PI/44};
     
-    qpos.data.resize(8);
+    qpos.data.resize(11);
     // qpos.name = {"thumbAA", "indexAA", "middleAA", "ringAA","thumbFE", "indexFE", "middleFE", "ringFE"};
 
 }
 
+
+/**
+ * HMD destructor - cleans up OpenXR resources.
+ * Destroys swapchains, spaces, session, and instance to prevent memory leaks.
+ */
 HMD::~HMD()
 {
     xrDestroySwapchain(xrSwapchain);
@@ -77,6 +93,11 @@ HMD::~HMD()
     xrDestroyInstance(xrInstance);
 }
 
+
+/**
+ * Initializes the entire HMD system including ROS, OpenGL, OpenXR, and hand tracking.
+ * Sets up publishers, subscribers, trackers, and prepares for VR rendering.
+ */
 int HMD::init()
 {   
     if (argc_ < 1 || argv_ == nullptr) {
@@ -91,8 +112,10 @@ int HMD::init()
     // for model
     hand_sync_pub = nh.advertise<vr::HandSyncData>("hand_sync_data", 1);
     rviz_pub = nh.advertise<geometry_msgs::PoseArray>("rviz", 1);
-    data_pub = nh.advertise<std_msgs::Float32MultiArray>("data", 1);
+    rviz_pub2 = nh.advertise<geometry_msgs::PoseArray>("rviz2", 1);
+    
     qpos_pub = nh.advertise<std_msgs::Float32MultiArray>("/baseline", 1);
+    tracker_pose_pub = nh.advertise<geometry_msgs::PoseArray>("tracker_pose", 1);
 
     marker_pub = nh.advertise<visualization_msgs::Marker>("visualization_marker", 1); // debug tool
 
@@ -102,8 +125,9 @@ int HMD::init()
 
     tf_broadcaster = new tf2_ros::TransformBroadcaster();
 
-    // pose_array.poses.resize(specific_indices.size()*2);
+    
     pose_array.poses.resize(kSpecificIndices.size());
+    pose_array_temp.poses.resize(kSpecificIndices.size());
     start_time = ros::Time::now();
 
     
@@ -118,7 +142,22 @@ int HMD::init()
         return -1;
     }
 
+    if (!InitTrackerActions()) {
+        std::cerr << "Failed to init tracker actions\n";
+        return -1;
+    }
+    if (!BindTrackerAction()) {
+        std::cerr << "Failed to bind tracker action\n";
+        return -1;
+    }
+
+    if (!CreateTrackerSpaces()) {
+        std::cerr << "Failed to create tracker space\n";
+        return -1;
+    }
+
     pXRHandTracking = new OpenXRProvider::XRExtHandTracking(pLogger);
+    std::cerr << "tracker"<< std::endl;
     try {
         pXRHandTracking->Init(xrInstance, xrSession);
     } catch (const std::exception& e) {
@@ -126,10 +165,16 @@ int HMD::init()
         return -1;
     }
 
+    std::cerr << "tracker init "<< std::endl;
+
+    
+
     if (!beginOpenXRSession()) {
         std::cerr << "Failed to start OpenXR session." << std::endl;
         return -1;
     }
+
+    std::cerr << "session begin"<< std::endl;
 
     if (!InitAllSwapchains()) {
         std::cerr << "Failed to create Swapchain." << std::endl;
@@ -139,12 +184,20 @@ int HMD::init()
     return 1;
 }
 
+
+/**
+ * Main ROS publishing loop for continuous hand tracking and rendering.
+ * Processes frames at 60Hz until ROS shutdown or system error.
+ */
 void HMD::rospublish()
 {
     ros::Rate loop_rate(60);
     const size_t n = kSpecificIndices.size();
     pose_array.poses.clear();
     pose_array.poses.resize(n);  
+    pose_array_temp.poses.clear();
+    pose_array_temp.poses.resize(n);  
+
     while (ros::ok()) { 
 
         ros::spinOnce();  
@@ -153,5 +206,6 @@ void HMD::rospublish()
     }
     
     delete pXRHandTracking;
+    std::cout<<"break finish"<<std::endl;
     return ;
 }

@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
   geometry_msgs
   sensor_msgs
+  cv_bridge
 )
 
 add_message_files(
@@ -34,6 +35,7 @@ catkin_package(
 catkin_install_python(PROGRAMS
   src/final_node.py
   src/visualize.py
+  src/position_check.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

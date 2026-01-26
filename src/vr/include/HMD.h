@@ -1,17 +1,27 @@
 #pragma once
 #define XR_USE_GRAPHICS_API_OPENGL
+#define XR_USE_PLATFORM_WIN32
+
 #include <Windows.h>
-#include <vector>
-#include <memory>
+#include <glad/glad.h>
 #include <GL/gl.h>
-#include <thread>
+#include <vulkan/vulkan.h>
+#include <unknwn.h>
+
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
+
+
+#include <vector>
+#include <future>
+#include <memory>
+#include <thread>
+
+#include <OpenXRProvider.h>
 #include <cv_bridge/cv_bridge.h>
-#include <spdlog/spdlog.h>
+// #include <spdlog/spdlog.h>
 #include <ros/ros.h>
 #include <std_msgs/Header.h>
-#include <OpenXRProvider.h>
 #include <geometry_msgs/PoseArray.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <std_msgs/Float32MultiArray.h>
@@ -58,11 +68,19 @@ public:
     bool waitAndBeginFrame(XrFrameState& outState);
     void publishHMDPose(const ros::Time& stamp);
     void locateHandJoints();
-    void updatePoseArray(const ros::Time& stamp);
-    void computeJointAngles(const ros::Time& stamp);
+    bool updatePoseArray(const ros::Time& stamp);
+    void publishJointAngles(const ros::Time& stamp);
     void renderAndSubmitFrame(const XrFrameState& frameState);
     void imageCallback(const sensor_msgs::ImageConstPtr& msg);
     void currentCallback(const std_msgs::Float32MultiArray::ConstPtr& msg);
+<<<<<<< HEAD
+=======
+    bool InitTrackerActions();
+    bool BindTrackerAction();
+    bool CreateTrackerSpaces();
+
+
+>>>>>>> dev
 
     Eigen::Vector2d computeThumbAngles(
         const geometry_msgs::PoseArray& poses,
@@ -77,11 +95,23 @@ public:
         const Eigen::Vector3d& y_axis,
         double smoothing_gamma
     );
+<<<<<<< HEAD
+=======
+
+    void leftHandToRightHand(
+    geometry_msgs::PoseArray& poses
+    );
+
+    void UpdateAllTrackers();
+>>>>>>> dev
     //debug    
     
 
 private:
     // Window + GL context
+
+    PFN_xrEnumerateViveTrackerPathsHTCX pfnEnumerateViveTrackerPathsHTCX = nullptr;
+
     HWND                              hWnd{ nullptr };
     HDC                               hDC{ nullptr };
     HGLRC                             hGLRC{ nullptr };
@@ -104,6 +134,31 @@ private:
     OpenXRProvider::XRExtHandTracking* pXRHandTracking{ nullptr };
     bool                              bDrawHandJoints{ false };
 
+    // Multiple tracker support
+    static const int MAX_TRACKERS = 2;
+
+    // Paths for each tracker role
+    std::vector<std::string> trackerRoleStrings = {
+        // "/user/vive_tracker_htcx/role/chest",
+        "/user/vive_tracker_htcx/role/left_foot",
+        "/user/vive_tracker_htcx/role/right_foot",
+        // "/user/vive_tracker_htcx/role/left_shoulder",
+        // "/user/vive_tracker_htcx/role/right_shoulder",
+        // "/user/vive_tracker_htcx/role/waist",
+        // "/user/vive_tracker_htcx/role/left_knee",
+        // "/user/vive_tracker_htcx/role/right_knee"
+    };
+
+    XrPath trackerPaths[MAX_TRACKERS];
+    XrSpace trackerSpaces[MAX_TRACKERS];
+    int trackerCount = 0;
+
+    // Shared ActionSet and Action
+    XrActionSet trackerActionSet = XR_NULL_HANDLE;
+    XrAction trackerPoseAction   = XR_NULL_HANDLE;
+
+
+
     // Logging
     std::shared_ptr<spdlog::logger>    pLogger{ spdlog::default_logger() };
 
@@ -122,6 +177,7 @@ private:
     ros::Subscriber                    currentSub;
     tf2_ros::TransformBroadcaster*     tf_broadcaster{ nullptr };
     geometry_msgs::PoseArray           pose_array;
+    geometry_msgs::PoseArray           pose_array_temp;
     std_msgs::Float32MultiArray        angle_array;
     std_msgs::Float32MultiArray        data_array;
     std_msgs::Float32MultiArray        qpos;
@@ -130,8 +186,10 @@ private:
     std::vector<float>                 latest_angles;
     ros::Publisher                     hand_sync_pub;
     ros::Publisher                     rviz_pub;
+    ros::Publisher                     rviz_pub2;
     ros::Publisher                     data_pub;
     ros::Publisher                     qpos_pub;
+    ros::Publisher                     tracker_pose_pub;
 
     // joint
     std::array<double, 5> AA_joint;
@@ -146,11 +204,14 @@ private:
     Eigen::Vector3d temp;
     Eigen::Vector3d m_Index_ik;
 
-    int32_t mainWidth;
-    int32_t mainHeight;
+    int32_t mainWidth{0};
+    int32_t mainHeight{0};
     std::array<int32_t, kSmallCount> smallWidth{};
     std::array<int32_t, kSmallCount> smallHeight{};
 
     std::array<float, 4> current{};
+
+
+    
 
 };

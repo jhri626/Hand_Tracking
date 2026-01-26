@@ -90,19 +90,19 @@ class Finalnode:
         self.pub = rospy.Publisher("/hand_joint_command", JointState, queue_size=1)
         self.motor_pub = rospy.Publisher('/motor_values', Float64MultiArray, queue_size=1)
         self.current_pub = rospy.Publisher('/current_state', Float32MultiArray, queue_size = 1)
-        self.sub = rospy.Subscriber('/model_out', Float32MultiArray, self.callback,queue_size = 1)
         self.recover = rospy.Subscriber('/recover', Int16, self.recovery)
         
         if mode == None:
-            self.mode = "real"
+            self.mode = "NN"
         elif mode == "base":
             self.mode = "base"
 
-        print(self.mode)
+
         try:
             self.__init_dxl()
+            self.submode ="real"
         except:
-            self.mode = "sim"
+            self.submode = "sim"
 
         self.FE_prev = np.zeros(4)
         self.AA_prev = np.zeros(4)
@@ -112,13 +112,14 @@ class Finalnode:
         self.joint_currents = np.zeros(NUM_JOINT,dtype=np.int16)
 
         # Check if the calibration parameter exists and retrieve it
-        
+        print("mode : ",self.mode, ", submode : ",self.submode)        
         if self.mode == "base":
             rospy.loginfo("Baseline mode")
             self.sub = rospy.Subscriber('/baseline', Float32MultiArray, self.callback, queue_size = 1)
-        
+
         elif rospy.has_param('calibration/recorded_points'):
             self.cali_points = rospy.get_param('calibration/recorded_points')
+            self.sub = rospy.Subscriber('/model_out', Float32MultiArray, self.callback,queue_size = 1)
             rospy.loginfo("Loaded calibration points: %s", self.cali_points)
 
             self.init = np.array(self.cali_points[0])
@@ -232,15 +233,20 @@ class Finalnode:
             aa = self.compute_aa(raw_data)
 
             # Apply rate limiting (delta clamp) to FE and AA
-            fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
-            aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
+            # fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
+            # aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
+
+            ############################### temporal for experiment########################
+            fe_adjusted = fe
+            aa_adjusted = aa
+            ###############################################################################
 
             # Update previous state for next iteration
             self.FE_prev = fe_adjusted.copy()
             self.AA_prev = aa_adjusted.copy()
 
             # Apply finger-collision avoidance adjustments to AA
-            aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
+            # aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
             combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
             
         elif self.mode == "base":
@@ -248,15 +254,17 @@ class Finalnode:
 
         # Concatenate AA and FE into a single command array
         
-        if self.mode in ("real", "base"):
+        if self.submode == "real":
             motor_value = self.joint_to_motor(combined)
             self.read_current()
             self.send_to_motors(motor_value)
             self.motor_pub.publish(motor_value)
-        elif self.mode == "sim":
+        elif self.submode == "sim":
             # Publish JointState message (unchanged as requested)
             joint_8 = JointState()
             joint_8.header = Header()
+            if self.mode == "base":
+                combined = np.array(combined)
             joint_8.position = combined.tolist()
 
             self.pub.publish(joint_8)
@@ -282,7 +290,7 @@ class Finalnode:
                         np.sign(diff) * threshold,
                         diff)
         ratio = (raw[:4] - self.init[:4]) / np.abs(denom)
-        return 0.5 * np.tanh(np.sign(ratio) * ratio**2)
+        return 0.36 * ratio
 
     @staticmethod
     def apply_delta_clamp(values, prev, max_delta):
@@ -429,7 +437,8 @@ if __name__ == '__main__':
     try:
         rospy.spin()
     finally:
-        node.disable_torque_all()
+        if node.mode !='sim':
+            node.disable_torque_all()
 
     # node.disable_torque_all()
         

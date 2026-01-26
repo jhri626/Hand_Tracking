@@ -4,3 +4,6 @@
 [submodule "src/hand_urdf_discription"]
 	path = src/hand_urdf_discription
 	url = https://github.com/Hokyun-Lee/hand_urdf_discription.git
+[submodule "src/vr/third_party/OpenXRProvider2"]
+	path = src/vr/third_party/OpenXRProvider2
+	url = https://github.com/1runeberg/OpenXRProvider_v2.git
