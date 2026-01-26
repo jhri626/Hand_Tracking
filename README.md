@@ -1,6 +1,7 @@
-# Hand_Tracking
+## Hand_Tracking
 
-Package for the **Tocabi hand control** with **Vive Focus vision-based hand tracking**.  
+
+- Package for the **Tocabi hand control** with **Vive Focus vision-based hand tracking**.  
 This repository implements algorithms to estimate and control finger joint angles (FE, AA) from hand-tracking data, and integrate them into the Tocabi robotic hand system.
 ---
 
