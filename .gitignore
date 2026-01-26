@@ -27,3 +27,7 @@ runs/
 utils/
 model/new_data/
 model/previous_data/
+
+!/CSharp_SocketServer/**
+!/images/**
+
