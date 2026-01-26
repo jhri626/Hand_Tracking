@@ -4,6 +4,7 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/TransformStamped.h>
 
 /// @brief Window procedure callback for handling basic Win32 messages.
 /// @param hWnd Handle to the window.
@@ -24,11 +25,8 @@ Eigen::Vector3d getPositionfromPose(const geometry_msgs::Pose& pose);
 // Extract orientation quaternion from PoseArray at index idx
 Eigen::Quaterniond getQuaternionfromArray(const geometry_msgs::PoseArray& poses, size_t idx);
 Eigen::Quaterniond getQuaternionfromPose(const geometry_msgs::Pose& pose);
-<<<<<<< HEAD
-=======
 void transformPoseArrayToBase(geometry_msgs::PoseArray& poses);
 void transformHMDtoRobot(geometry_msgs::TransformStamped& tf, bool is_hmd, bool is_hand);
->>>>>>> dev
 
 template <size_t N>
 std::array<geometry_msgs::Pose, N> selectPoses(
@@ -69,9 +67,6 @@ std::array<Eigen::Quaterniond, N> selectQuaternions(
   }
   return out;
 }
-<<<<<<< HEAD
-=======
 
 
 
->>>>>>> dev

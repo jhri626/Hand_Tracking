@@ -38,7 +38,7 @@ void HMD::processFrameIteration() {
 
     // uncomment this line to use left hand data for both hands
     // if (valid) leftHandToRightHand(pose_array);
-    computeJointAngles(now);
+    publishJointAngles(now);
     renderAndSubmitFrame(frameState);
 }
 
@@ -187,7 +187,7 @@ bool HMD::updatePoseArray(const ros::Time& stamp)
             tfMsg.transform.rotation.w = p_hand.orientation.w;
 
             transformHMDtoRobot(tfMsg, false, true);
-            tf_broadcaster.sendTransform(tfMsg);
+            tf_broadcaster->sendTransform(tfMsg);
         }
 
         // ---------------- Right hand ----------------
@@ -227,7 +227,7 @@ bool HMD::updatePoseArray(const ros::Time& stamp)
             tfMsg.transform.rotation.w = p.orientation.w;
 
             transformHMDtoRobot(tfMsg, false, true);
-            tf_broadcaster.sendTransform(tfMsg);
+            tf_broadcaster->sendTransform(tfMsg);
         }
     }
 
@@ -728,7 +728,7 @@ void HMD::UpdateAllTrackers()
                 }
 
                 transformHMDtoRobot(tfMsg, false, false);
-                tf_broadcaster.sendTransform(tfMsg);
+                tf_broadcaster->sendTransform(tfMsg);
             })
         );
     }

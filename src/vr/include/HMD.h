@@ -73,14 +73,11 @@ public:
     void renderAndSubmitFrame(const XrFrameState& frameState);
     void imageCallback(const sensor_msgs::ImageConstPtr& msg);
     void currentCallback(const std_msgs::Float32MultiArray::ConstPtr& msg);
-<<<<<<< HEAD
-=======
     bool InitTrackerActions();
     bool BindTrackerAction();
     bool CreateTrackerSpaces();
 
 
->>>>>>> dev
 
     Eigen::Vector2d computeThumbAngles(
         const geometry_msgs::PoseArray& poses,
@@ -95,15 +92,12 @@ public:
         const Eigen::Vector3d& y_axis,
         double smoothing_gamma
     );
-<<<<<<< HEAD
-=======
 
     void leftHandToRightHand(
     geometry_msgs::PoseArray& poses
     );
 
     void UpdateAllTrackers();
->>>>>>> dev
     //debug    
     
 
@@ -176,6 +170,8 @@ private:
     ros::Subscriber                    imageSub;
     ros::Subscriber                    currentSub;
     tf2_ros::TransformBroadcaster*     tf_broadcaster{ nullptr };
+
+    geometry_msgs::Pose           p_hand;
     geometry_msgs::PoseArray           pose_array;
     geometry_msgs::PoseArray           pose_array_temp;
     std_msgs::Float32MultiArray        angle_array;

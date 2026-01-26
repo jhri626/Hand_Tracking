@@ -10,11 +10,7 @@ namespace HMDVariable {
     
 }
 
-<<<<<<< HEAD
-inline constexpr std::array<int, 27> kSpecificIndices = {
-=======
 inline constexpr std::array<int, 26> kSpecificIndices = {
->>>>>>> dev
     XR_HAND_JOINT_PALM_EXT,
     XR_HAND_JOINT_WRIST_EXT,
     XR_HAND_JOINT_THUMB_METACARPAL_EXT,
