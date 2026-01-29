@@ -2,7 +2,7 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-from std_msgs.msg import Float32MultiArray, Float64MultiArray, Int16, Int32MultiArray
+from std_msgs.msg import Float32MultiArray, Int16, Int32MultiArray
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Header
 from rcl_interfaces.srv import GetParameters
@@ -43,14 +43,15 @@ EXTENDED_POSITION_CONTROL_MODE  = 4
 # Protocol version
 PROTOCOL_VERSION            = 2    
 
-DXL_ID = [31,32,33,34,35,36,37,38]
-DXL_ID_FE = [32,34,36,38]
-DXL_ID_AA = [31,33,35,37]
-CurLimit_FE = [450, 700, 450, 450]
+DXL_ID = [11,12,21,22,31,32,41,42]
+DXL_ID_FE = [12,22,32,42]
+DXL_ID_AA = [11,21,31,41]
+CurLimit_FE = [100, 100, 100, 100]
 CurLimit_AA = [400, 400, 400, 400]
 CurLimit = CurLimit_AA + CurLimit_FE
 
-BAUDRATE                    = 4000000
+# BAUDRATE                    = 4000000
+BAUDRATE                    = 57600
 DEVICENAME                  = "/dev/ttyUSB0" #.encode('utf-8')        # Check which port is being used on your controller
                                                         # ex) Windows: "COM1"   Linux: "/dev/ttyUSB0"
 
@@ -67,7 +68,7 @@ PRESENT_CURRENT = 126
 HARDWARE_ERROR_STATE = 70
 
 init_fe = [0,0,0,0]
-init_aa = [1700, 2000, 2000, 2055]
+init_aa = [1600, 2000, 2100, 2150]
 
 pos = [0,0,0,0]
 vel = [0,0,0,0]
@@ -75,29 +76,31 @@ vel = [0,0,0,0]
 desired_pos_fe = [0,0,0,0]
 desired_pos_aa = [0,0,0,0]
 
+
+dummy_time = 0
+
         
+#Preset dynamixel joint value of Gripper
+#ps = np.array([[1689, init_pos[0], 2700], [init_pos[1], 1650-init_pos[1] , 2400 - init_pos[1]], [init_pos[2], 1800 - init_pos[2], 2400 - init_pos[2]], [init_pos[3], 1800 - init_pos[3], 2400 - init_pos[3]]])
 # Thumb: Lateral Pinch, T-1, T-1	Thumb: Init, pinch, full flexion		Index: Init, pinch, full flexion	    Middle: Init, pinch, full flexion
 
-ps_fe = np.array([[0,2550,3100],[0,2900,4300],[0,2841,4300],[0,3167,4300]]) # plate : 0 , pinch , full flexion
-ps_aa = np.array([[600,0,-500],[300,0,-300],[300,0,-300],[300,0,-300]]) #AA same order with calibration posture
+ps_fe = np.array([[3300,5000,8000],[700,3500,8000],[700,3500,8000],[700,3500,8000]]) 
+ps_aa = np.array([[400,0,-600],[400,0,-400],[400,0,-400],[400,0,-400]]) 
 
 # TODO : fix this parameters
 
 
 def wait_for_future(node, future):
     """Wait for a future to complete by spinning the node's executor."""
-
     executor = SingleThreadedExecutor()
     executor.add_node(node)
     
-
     while rclpy.ok():
         executor.spin_once(timeout_sec=0.1)
         if future.done():
             break
             
     executor.remove_node(node)
-    # executor.shutdown()
     return future.result()
 
 class Finalnode(Node):
@@ -106,7 +109,7 @@ class Finalnode(Node):
         Main function to initialize the node and retrieve calibration data from the ROS Parameter Server.
         """
         self.lock = threading.Lock()
-        super().__init__('calibration_user')
+        super().__init__('hand_control_node')
         self.initialized = False
 
         qos_profile = QoSProfile(
@@ -115,11 +118,17 @@ class Finalnode(Node):
             depth=1
         )
 
+        qos_profile_current = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+
         self.qos_profile = qos_profile
 
         self.pub = self.create_publisher(JointState, "/hand_joint_command", qos_profile)
         self.motor_pub = self.create_publisher(Float32MultiArray, '/motor_values', qos_profile)
-        self.current_pub = self.create_publisher(Float32MultiArray, '/current_state', qos_profile)
+        self.current_pub = self.create_publisher(Float32MultiArray, '/current_state', qos_profile_current)
 
         self.recover = self.create_subscription(Int16, '/recover', self.recovery, qos_profile)
         
@@ -127,8 +136,12 @@ class Finalnode(Node):
             self.mode = "NN"
         elif mode == "base":
             self.mode = "base"
+        elif mode == "test":
+            self.mode = "test"
+            self.time = 0
         else:
-            self.mode = mode # Use actual passed mode
+            raise ValueError("not supported mode")
+                
 
 
         try:
@@ -136,14 +149,14 @@ class Finalnode(Node):
             self.submode ="real"
         except:
             self.submode = "sim"
-
+        
         self.FE_prev = np.zeros(4)
         self.AA_prev = np.zeros(4)
         self.FE_max_delta = 0.1
-        self.AA_max_delta = 0.05
+        self.AA_max_delta = 0.08
         self.collision_margin = 0.2
         self.joint_currents = np.zeros(NUM_JOINT,dtype=np.int16)
-        self.declare_parameter('min_diff_threshold', 15.0) 
+        self.pre_time=time.time()
 
 
     def get_parameter_from_server(self):
@@ -152,7 +165,8 @@ class Finalnode(Node):
         if self.mode == "base":
             self.get_logger().info("Baseline mode")
             self.sub = self.create_subscription(Float32MultiArray, '/baseline', self.callback, self.qos_profile)
-
+        elif self.mode =="test":
+            self.create_subscription(Int16, '/test', self.callback, self.qos_profile)
         else:
             
             target_node_name = 'point_recorder'
@@ -160,7 +174,6 @@ class Finalnode(Node):
 
             self.get_logger().info(f"Setting up client for {target_node_name}...")
             
-
             self.param_client = self.create_client(
                 GetParameters,
                 f'{target_node_name}/get_parameters' 
@@ -168,20 +181,17 @@ class Finalnode(Node):
 
             self.get_logger().info(f"Waiting for service '{target_node_name}/get_parameters'...")
             
-
             if not self.param_client.wait_for_service(timeout_sec=5.0):
                 self.get_logger().error(f"Parameter service for {target_node_name} not available.")
                 self.disable_torque_all()
                 return
 
-            
             request = GetParameters.Request()
             request.names = [target_param_name]
             
             self.get_logger().info(f"Requesting parameter '{target_param_name}'...")
 
             
-            # print("request")
             future = self.param_client.call_async(request)
 
             
@@ -189,6 +199,7 @@ class Finalnode(Node):
             # print("response")
             param_value = None
             if response.values and response.values[0].type != 0: # 0: UNINITIALIZED
+                
                 param_value = response.values[0].double_array_value
 
             try:
@@ -215,7 +226,7 @@ class Finalnode(Node):
                     self.thumb  = self.cali_points[3]  # 4. thumb bend pose
                     self.sphere = self.cali_points[4]  # 5. sphere pose
                     
-            
+                    # Subscriber 생성
                     # print("subcribe")
                     self.sub = self.create_subscription(Float32MultiArray, '/model_out', self.callback, 1)
 
@@ -245,8 +256,8 @@ class Finalnode(Node):
 
         for i in DXL_ID	 :
             self.groupSyncRead.addParam(i)
-
         self.groupSyncRead_current = dxl.GroupSyncRead(self.portHandler, self.packetHandler, PRESENT_CURRENT, 2)
+        
         for i in DXL_ID_AA :
             self.groupSyncRead_current.addParam(i)
             self.groupSyncReadstatus.addParam(i)
@@ -272,7 +283,7 @@ class Finalnode(Node):
 			
 		# Change Operating mode
         for i in DXL_ID_AA :
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_OPERATING_MODE , EXTENDED_POSITION_CONTROL_MODE)
+            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_OPERATING_MODE , CURRENT_POSITION_CONTROL_MODE)
 			
         for i in DXL_ID_FE :
             self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_OPERATING_MODE , CURRENT_CONTROL_MODE) 
@@ -290,9 +301,9 @@ class Finalnode(Node):
         for i in DXL_ID_FE:
             self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_DRIVING_MODE, 0)
             self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
-            self.packetHandler.write2ByteTxRx(self.portHandler, i, ADDR_XL330_GOAL_CURRENT, 80)
+            self.packetHandler.write2ByteTxRx(self.portHandler, i, ADDR_XL330_GOAL_CURRENT, 40)
 
-        time.sleep(3.0)
+        time.sleep(2.0)
 
         for i in DXL_ID_FE:
             self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_DISABLE)
@@ -301,12 +312,32 @@ class Finalnode(Node):
 
         for i in range(4) :
             init_fe[i] = self.packetHandler.read4ByteTxRx(self.portHandler, DXL_ID_FE[i],ADDR_XL330_PRESENT_POSITION)[0]
-        # print("init fe", init_fe)
+            while init_fe[i] > 100000:
+                print(f"overflow! idx {DXL_ID_FE[i]}")
+                self.packetHandler.write1ByteTxRx(self.portHandler, DXL_ID_FE[i], ADDR_XL330_TORQUE_ENABLE , TORQUE_DISABLE)
+                self.packetHandler.reboot(self.portHandler, DXL_ID_FE[i])
+
+                self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_DRIVING_MODE, 0)
+                self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
+                self.packetHandler.write2ByteTxRx(self.portHandler, i, ADDR_XL330_GOAL_CURRENT, 40)
+                time.sleep(1.0)
+                
+                self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_DISABLE)
+                self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_DRIVING_MODE, 1)
+                self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
+                init_fe[i] = self.packetHandler.read4ByteTxRx(self.portHandler, DXL_ID_FE[i],ADDR_XL330_PRESENT_POSITION)[0]
+        print("="*100)
+        print(init_fe)
+        print("="*100)
+
+
+        
+        
 		
         # FE joint Torque off and Change Operating Mode
         for i in DXL_ID_FE:
             self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_DISABLE)
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_OPERATING_MODE , EXTENDED_POSITION_CONTROL_MODE)
+            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_OPERATING_MODE , CURRENT_POSITION_CONTROL_MODE)
             self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
         
 
@@ -317,48 +348,126 @@ class Finalnode(Node):
             self.get_logger().warn("Skipping callback: initialization not complete.")
             return
         # Convert incoming Float32MultiArray message to a NumPy array
-        if self.mode != "base":
+        if self.mode == "NN":
+            self.pre_time = time.time()
             raw_data = np.array(msg.data)
             # Compute flexion/extension (FE) based on calibration points
             fe = self.compute_fe(raw_data)
+            # print("fe",fe)
 
             # Compute abduction/adduction (AA) based on calibration points
             aa = self.compute_aa(raw_data)
+            print("aa : ", aa)
 
             # Apply rate limiting (delta clamp) to FE and AA
             fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
             aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
 
+            ############################### temporal for experiment########################
+            # fe_adjusted = fe
+            # aa_adjusted = aa
+            ###############################################################################
 
             # Update previous state for next iteration
             self.FE_prev = fe_adjusted.copy()
             self.AA_prev = aa_adjusted.copy()
 
             # Apply finger-collision avoidance adjustments to AA
-            aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
-            combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
-
+            # self.apply_collision_avoidance(aa_adjusted)
+            
         elif self.mode == "base":
-            raw_data = np.array(msg.data)
             # combined = msg.data
-            fe = raw_data[:4]
-            aa = raw_data[4:]
+            raw_data = np.array(msg.data)
+            raw_data[0] = np.clip(raw_data[0] + 0.2,-0.5,0.5) # offset
+            aa = raw_data[:4]
+            fe = raw_data[4:8]
 
             fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
             aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
-            self.FE_prev = fe_adjusted.copy()
-            self.AA_prev = aa_adjusted.copy()
+        elif self.mode =="test":
+            if self.time < 30:
+                fe_adjusted =  [0.3 + 0.3*np.sin(self.time/60 * np.pi),0.3 + 0.3*np.sin(self.time/60 * np.pi), 0.3 + 0.3*np.sin(self.time/60 * np.pi),0.3 + 0.3*np.sin(self.time/60 * np.pi)]
+            else:
+                fe_adjusted= [0.6,0.6,0.6,0.6]
+            # fe_adjusted =  [0.6 + 0.6 *np.sin(0 * np.pi),0.6 + 0.6*np.sin(0 * np.pi),0.6 + 0.6 *np.sin(0* np.pi),0.6 + 0.6 *np.sin(0* np.pi)]
+            # fe_adjusted = np.zeros(4) 
+            # fe_adjusted[0] = 0.6
+            # fe_adjusted[3] = 0.6
+            aa_adjusted =  np.zeros(4)
+            if self.time < 50:
+                aa_adjusted[0] = 0.1
+                aa_adjusted[1] = 0.3
+                aa_adjusted[2] = -0.0
+                aa_adjusted[3] = -0.3
+            else:
+                print("change")
+                aa_adjusted[0] = 0.1
+                aa_adjusted[1] = 0.3 - min(0.1,0.1*(float(self.time)-50.0))
+                aa_adjusted[2] = -0.0 - min(0.1,0.1*(float(self.time)-50.0))
+                aa_adjusted[3] = -0.3 + min(0.1,0.066*(float(self.time)-50.0))
 
-            # Apply finger-collision avoidance adjustments to AA
-            aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
-            combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
+            self.time +=1  
+            # print(time.time() - self.pre_time)
+            # self.pre_time = time.time()
+            # print(fe_adjusted)
+            
+
+            
+
+            
+
+        # Apply finger-collision avoidance adjustments to AA
+        # dxl_pos_result = self.groupSyncRead.txRxPacket()
+        # joint_pos = np.zeros(8)
+        
+        # for i in range(4) :
+            # print(self.groupSyncRead_current.getData(DXL_ID_AA[i], 126, 1))
+            # self.joint_currents[i] = self.groupSyncRead_current.getData(DXL_ID_AA[i], PRESENT_CURRENT, 2)
+            # joint_pos[i] = self.groupSyncRead.getData(DXL_ID_AA[i], 132, 4)
+            # if joint_pos[i] == 0.0:
+            #     print("check")
+
+
+                
+        # for i in range(4) :
+            # self.joint_currents[i+4] = self.groupSyncRead_current.getData(DXL_ID_FE[i], PRESENT_CURRENT, 1)
+            # joint_pos[i+4] = self.groupSyncRead.getData(DXL_ID_FE[i], 132, 4)
+            # if joint_pos[i] == 0.0:
+            #     print("check")
+        # if dxl_pos_result!= dxl.COMM_SUCCESS:
+        #     print("fail!")
+        # else:
+        #     # print(f"current pos \n {joint_pos}")
+        #     pass
+
+
+        # time.sleep(0.05)
+
+        # aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
+        self.FE_prev = fe_adjusted.copy()
+        self.AA_prev = aa_adjusted.copy()
+        combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
+            
 
         # Concatenate AA and FE into a single command array
+        print("before motor",time.time() - self.pre_time)
+        self.pre_time = time.time()
+
         
         if self.submode == "real":
             motor_value = self.joint_to_motor(combined)
+
+            # print("q2m",time.time() - self.pre_time)
+            # self.pre_time = time.time()
+
             self.read_current()
+            # print("current",time.time() - self.pre_time)
+            # self.pre_time = time.time()
+            
             self.send_to_motors(motor_value)
+            # print("motor",time.time() - self.pre_time)
+            # self.pre_time = time.time()
+        
             int_data = motor_value.data
             motor_value_float = [float(val) for val in int_data]
             motor_float = Float32MultiArray()
@@ -374,6 +483,11 @@ class Finalnode(Node):
             joint_8.position = combined.tolist()
             self.pub.publish(joint_8)
         
+
+        # print("motor",time.time() - self.pre_time)
+        # self.pre_time = time.time()
+        
+
         
     def compute_fe(self, raw):
         """Compute flexion/extension values from raw sensor data."""
@@ -388,12 +502,15 @@ class Finalnode(Node):
         diff = np.zeros(4)
         diff[0]  = self.sphere[0] - self.init[0]
         diff[1:] = self.extent[1:4] - self.init[1:4]
-        threshold = self.get_parameter('min_diff_threshold').value
+        threshold = 10
         denom = np.where(np.abs(diff) < threshold,
                         np.sign(diff) * threshold,
                         diff)
         ratio = (raw[:4] - self.init[:4]) / np.abs(denom)
-        return 0.36 * ratio
+        # ratio[2] = np.clip(ratio[2],-0.5,0.5)
+        # ratio = np.zeros(4)
+        # ratio[0] = 1
+        return np.clip(0.4 * ratio,-0.5,0.5)
 
     @staticmethod
     def apply_delta_clamp(values, prev, max_delta):
@@ -407,31 +524,31 @@ class Finalnode(Node):
         # Index vs Middle
         if aa[2] - aa[1] > margin:
             aa[1] = aa[2] - margin
-            self.get_logger().warn("Index AA clipped to avoid collision")
+            # self.get_logger().warn("Index AA clipped to avoid collision")
         # Ring vs Middle
         if aa[3] - aa[2] > margin:
             aa[3] = aa[2] + margin
-            self.get_logger().warn("Ring AA clipped to avoid collision")
+            # self.get_logger().warn("Ring AA clipped to avoid collision")
         return aa
     
     def joint_to_motor(self,q_pos):  # TODO : check the logic after param tuning
         # self.get_logger().info("motor callback")
         for i in range(4):
-            desired_pos_fe[i] = init_fe[i] + int((ps_fe[i,2]-ps_fe[i,0]) * q_pos[i+4] * 0.7692 ) # 1 / 1.3
+            # if q_pos[i+4] < 0.5:
+            desired_pos_fe[i] = init_fe[i] + int((ps_fe[i,2]-ps_fe[i,0]) * q_pos[i+4]) # 1 / 1.3
+            # else:
+            #     desired_pos_fe[i] = init_fe[i] + int((ps_fe[i,2]-ps_fe[i,1]) * (q_pos[i+4] -0.5) * 1.25 + ps_fe[i,1]) - ps_fe[i,0] # 1 / 1.3
+            # print(desired_pos_fe)
             desired_pos_aa[i] = init_aa[i] + int((ps_aa[i,2]-ps_aa[i,0]) * (q_pos[i]))      
 
         if q_pos[0] > 0:    
             desired_pos_aa[0] = init_aa[0] + int(ps_aa[0,1]) + 2 * int((ps_aa[0,2]-ps_aa[0,1]) * (q_pos[0]))
         elif q_pos[0] < 0:
             desired_pos_aa[0] = init_aa[0] + int(ps_aa[0,1]) + 2 * int((ps_aa[0,1]-ps_aa[0,0]) * (q_pos[0]))
-
-        for i in range(4):
-            if desired_pos_fe[i] < init_fe[i] :
-                desired_pos_fe[i] = init_fe[i]
-            elif desired_pos_fe[i] > (init_fe[i] +4400) :
-                desired_pos_fe[i] = (init_fe[i] +4400)
         
         motor_values = Int32MultiArray()
+
+        # print("motor",desired_pos_fe)
         
         motor_values.data = desired_pos_aa + desired_pos_fe
         
@@ -469,23 +586,37 @@ class Finalnode(Node):
             
             # Transmit packet
             result = self.groupSyncWrite.txPacket()
+            # print(f"desired pos\n, {data}")
             if result != dxl.COMM_SUCCESS:
                 self.get_logger().error(f"Dynamixel SyncWrite failed: {self.packetHandler.getTxRxResult(result)}")
             
     def read_current(self) :
+        '''
+        Check the current state of the motors
+        This function could makes delay for callback function (50hz->10hz)
+        Use this function when it is necessary
+        '''
         dxl_current_result = self.groupSyncRead_current.txRxPacket()
+        dxl_error_result = self.groupSyncReadstatus.txRxPacket()
+        # joint_pos = np.zeros(8)
+        error_status = np.zeros(8)
         for i in range(4) :
-         
+            
             self.joint_currents[i] = self.groupSyncRead_current.getData(DXL_ID_AA[i], PRESENT_CURRENT, 2)
+            error_status[i] = self.groupSyncReadstatus.getData(DXL_ID_AA[i], HARDWARE_ERROR_STATE, 1)
+            
         for i in range(4) :
-            self.joint_currents[i+4] = self.groupSyncRead_current.getData(DXL_ID_FE[i], PRESENT_CURRENT, 2)
+            self.joint_currents[i+4] = self.groupSyncRead_current.getData(DXL_ID_FE[i], PRESENT_CURRENT, 1)
+            
+            error_status[i+4] = self.groupSyncReadstatus.getData(DXL_ID_FE[i], HARDWARE_ERROR_STATE, 1)
         msg = Float32MultiArray()
         
         currents_float = self.joint_currents.astype(np.float32)
-        current_stat = currents_float / np.array(CurLimit)
+        current_stat = currents_float / np.array(CurLimit*1.25)
+        
         
         msg.data = current_stat.tolist()
-        
+        # print("topic",current_stat)
         self.current_pub.publish(msg)
     
     def disable_torque_all(self):
@@ -500,15 +631,17 @@ class Finalnode(Node):
         try:
             for i in DXL_ID:
                 self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE, TORQUE_DISABLE)
-                
+                # self.packetHandler.reboot(self.portHandler, i)
+                print(f"disable idx :{i}")
+                time.sleep(0.1)
         except Exception as e:
             self.get_logger().error(f"Failed to disable torque :{e}")
     
     def recovery(self, msg):
-        """
-        Recovery procedure to reboot motors in case of hardware error.
-        This function is not fully developed.
-        """
+        '''
+        Function for revoting motors
+        This function is not fully developed
+        '''
         # 1) Enter recovery mode: unsubscribe all callbacks
         self.get_logger().info("[Recovery] start: unsubscribing callbacks")
         if self.sub:
@@ -561,13 +694,22 @@ def main(args=None):
         print("shutdown by user")
     finally:
         print("shutdown")
-        if node.mode != 'sim':
+        # print(e)
+        if node.submode != 'sim':
+            print("torque off")
             node.disable_torque_all()
+            time.sleep(1)
         node.destroy_node()
         rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
 
+    # node.disable_torque_all()
         
-    
+    # 1. still pose : basic pose
+    # 2. extend pose : extend every finger as much as possible
+    # 3. thumbs up pose : bend fingers except thumb
+    # 4. thumb bend pose : bend only thumb
+    # 5. sphere pose  : make sphere with hands
+

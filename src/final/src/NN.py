@@ -1,715 +1,354 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+ROS 2 node for model hand-angle inference (NumPy only).
+Updated to match the new PyTorch architecture with FiLM and Shared Backbone.
+Compatible with Python 3 (ROS 2).
+"""
+
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-from std_msgs.msg import Float32MultiArray, Int16, Int32MultiArray
-from sensor_msgs.msg import JointState
-from std_msgs.msg import Header
-from rcl_interfaces.srv import GetParameters
-from rclpy.executors import SingleThreadedExecutor
-import threading
 import numpy as np
-import dynamixel_sdk as dxl 
-import threading
-import sys
-import time
+from std_msgs.msg import Float32MultiArray
+from scipy.special import erf
+from bone import bone_parents, bone_children   # length 19
+from vr.msg import HandSyncData
+from scipy.signal import butter, lfilter, lfilter_zi
 
+# --------------------------------------------------------------------------- #
+# Configuration
+# --------------------------------------------------------------------------- #
+MODEL_WEIGHTS_PATH = r'C:/Users/dyros/Desktop/dummy_ws/model/best_val_loss_rot6d.npz'
 
+NUM_JOINTS = 20
+NUM_BONES  = 19
+PE_FREQ_BK = 5
+PE_FREQ_OK = 2
+GSD_DIM    = 100
+NEG_SLOPE  = 0.01                 # LeakyReLU slope
+ORI_DIM    = 6                    # rot6d (Updated from 3)
 
-ADDR_XL330_TORQUE_ENABLE       	= 64                          # Control table address is different in Dynamixel model
+INPUT_TOPIC  = '/hand_sync_data'
+OUTPUT_TOPIC = '/model_out'
+KEYWORDS     = [0, 21, 22, 23, 24, 25]   # joints to skip
+RADTODEG = 180.0 / np.pi
 
-ADDR_XL330_PRESENT_VELOCITY	= 112	
-ADDR_XL330_GOAL_POSITION       	= 116
-
-ADDR_XL330_PRESENT_POSITION	= 132
-ADDR_XL330_OPERATING_MODE	= 11
-ADDR_XL330_CURRENT_LIMIT	= 38
-
-ADDR_XL330_GOAL_CURRENT		= 102
-ADDR_XL330_DRIVING_MODE     = 10
-
-LEN_GOAL_POSITION		= 4
-LEN_PRESENT_VELOCITY		= 4
-LEN_PRESENT_POSITION		= 4
-LEN_GOAL_CURRENT        = 2
-LEN_DRIVING_MODE        = 1
-
-# Operating mode
-CURRENT_CONTROL_MODE		= 0
-POSITION_CONTROL_MODE		= 3
-CURRENT_POSITION_CONTROL_MODE	= 5
-EXTENDED_POSITION_CONTROL_MODE  = 4
-
-# Protocol version
-PROTOCOL_VERSION            = 2    
-
-DXL_ID = [11,12,21,22,31,32,41,42]
-DXL_ID_FE = [12,22,32,42]
-DXL_ID_AA = [11,21,31,41]
-CurLimit_FE = [100, 100, 100, 100]
-CurLimit_AA = [400, 400, 400, 400]
-CurLimit = CurLimit_AA + CurLimit_FE
-
-# BAUDRATE                    = 4000000
-BAUDRATE                    = 57600
-DEVICENAME                  = "/dev/ttyUSB0" #.encode('utf-8')        # Check which port is being used on your controller
-                                                        # ex) Windows: "COM1"   Linux: "/dev/ttyUSB0"
-
-TORQUE_ENABLE               = 1                             # Value for enabling the torque
-TORQUE_DISABLE              = 0                             # Value for disabling the torque
-
-
-
-
-NUM_FINGER				= 4
-NUM_JOINT				= 8
-
-PRESENT_CURRENT = 126
-HARDWARE_ERROR_STATE = 70
-
-init_fe = [0,0,0,0]
-init_aa = [1600, 2000, 2100, 2150]
-
-pos = [0,0,0,0]
-vel = [0,0,0,0]
-
-desired_pos_fe = [0,0,0,0]
-desired_pos_aa = [0,0,0,0]
-
-
-dummy_time = 0
-
-        
-#Preset dynamixel joint value of Gripper
-#ps = np.array([[1689, init_pos[0], 2700], [init_pos[1], 1650-init_pos[1] , 2400 - init_pos[1]], [init_pos[2], 1800 - init_pos[2], 2400 - init_pos[2]], [init_pos[3], 1800 - init_pos[3], 2400 - init_pos[3]]])
-# Thumb: Lateral Pinch, T-1, T-1	Thumb: Init, pinch, full flexion		Index: Init, pinch, full flexion	    Middle: Init, pinch, full flexion
-
-ps_fe = np.array([[3300,5000,8000],[700,3500,8000],[700,3500,8000],[700,3500,8000]]) 
-ps_aa = np.array([[400,0,-600],[400,0,-400],[400,0,-400],[400,0,-400]]) 
-
-# TODO : fix this parameters
-
-
-def wait_for_future(node, future):
-    """Wait for a future to complete by spinning the node's executor."""
-    executor = SingleThreadedExecutor()
-    executor.add_node(node)
-    
-    while rclpy.ok():
-        executor.spin_once(timeout_sec=0.1)
-        if future.done():
-            break
-            
-    executor.remove_node(node)
-    return future.result()
-
-class Finalnode(Node):
-    def __init__(self, mode=None):
-        """
-        Main function to initialize the node and retrieve calibration data from the ROS Parameter Server.
-        """
-        self.lock = threading.Lock()
-        super().__init__('hand_control_node')
-        self.initialized = False
-
-        qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1
-        )
-
-        qos_profile_current = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1
-        )
-
-        self.qos_profile = qos_profile
-
-        self.pub = self.create_publisher(JointState, "/hand_joint_command", qos_profile)
-        self.motor_pub = self.create_publisher(Float32MultiArray, '/motor_values', qos_profile)
-        self.current_pub = self.create_publisher(Float32MultiArray, '/current_state', qos_profile_current)
-
-        self.recover = self.create_subscription(Int16, '/recover', self.recovery, qos_profile)
-        
-        if mode == None:
-            self.mode = "NN"
-        elif mode == "base":
-            self.mode = "base"
-        elif mode == "test":
-            self.mode = "test"
-            self.time = 0
-        else:
-            raise ValueError("not supported mode")
-                
-
-
+# --------------------------------------------------------------------------- #
+# NumPy model (Skeleton2Mesh replica)
+# --------------------------------------------------------------------------- #
+class Skeleton2AngleNumPy(object):
+    """Pure-NumPy implementation reproducing the NEW PyTorch Skeleton2Mesh with FiLM."""
+    def __init__(self, npz_path):
+        # Load weights
         try:
-            self.__init_dxl()
-            self.submode ="real"
+            loaded = np.load(npz_path, allow_pickle=True)
         except:
-            self.submode = "sim"
-        
-        self.FE_prev = np.zeros(4)
-        self.AA_prev = np.zeros(4)
-        self.FE_max_delta = 0.1
-        self.AA_max_delta = 0.08
-        self.collision_margin = 0.2
-        self.joint_currents = np.zeros(NUM_JOINT,dtype=np.int16)
-        self.pre_time=time.time()
-
-
-    def get_parameter_from_server(self):
-        # Check if the calibration parameter exists and retrieve it
-        print("mode : ",self.mode, ", submode : ",self.submode)        
-        if self.mode == "base":
-            self.get_logger().info("Baseline mode")
-            self.sub = self.create_subscription(Float32MultiArray, '/baseline', self.callback, self.qos_profile)
-        elif self.mode =="test":
-            self.create_subscription(Int16, '/test', self.callback, self.qos_profile)
-        else:
+            loaded = np.load(npz_path)
             
-            target_node_name = 'point_recorder'
-            target_param_name = 'calibration.recorded_points'
-
-            self.get_logger().info(f"Setting up client for {target_node_name}...")
+        self.params = {}
+        for k, v in loaded.items():
+            self.params[k] = v.astype(np.float32)
             
-            self.param_client = self.create_client(
-                GetParameters,
-                f'{target_node_name}/get_parameters' 
-            )
+        print(f"Loaded {len(self.params)} parameters.")
 
-            self.get_logger().info(f"Waiting for service '{target_node_name}/get_parameters'...")
-            
-            if not self.param_client.wait_for_service(timeout_sec=5.0):
-                self.get_logger().error(f"Parameter service for {target_node_name} not available.")
-                self.disable_torque_all()
-                return
-
-            request = GetParameters.Request()
-            request.names = [target_param_name]
-            
-            self.get_logger().info(f"Requesting parameter '{target_param_name}'...")
-
-            
-            future = self.param_client.call_async(request)
-
-            
-            response = wait_for_future(self, future)
-            # print("response")
-            param_value = None
-            if response.values and response.values[0].type != 0: # 0: UNINITIALIZED
-                
-                param_value = response.values[0].double_array_value
-
-            try:
-                # Retrieve parameter
-                # Note: In ROS 2, nested lists might come in differently depending on YAML parser.
-                # Assuming standard list of lists structure.
-                
-                if param_value is not None and len(param_value) > 0:
-                    
-                    expected_rows = 5
-                    expected_cols = 8 
-                    
-                    if len(param_value) != (expected_rows * expected_cols):
-                         raise ValueError(f"Data size mismatch: Expected {expected_rows*expected_cols}, got {len(param_value)}")
-
-                    # Reshape: 1D List -> 2D Numpy Array
-                    self.cali_points = np.array(param_value).reshape(expected_rows, expected_cols)
-                    
-                    self.get_logger().info(f"Loaded calibration points:\n{self.cali_points}")
-
-                    self.init   = self.cali_points[0]  # 1. still pose
-                    self.extent = self.cali_points[1]  # 2. extend pose
-                    self.good   = self.cali_points[2]  # 3. thumbs up pose
-                    self.thumb  = self.cali_points[3]  # 4. thumb bend pose
-                    self.sphere = self.cali_points[4]  # 5. sphere pose
-                    
-                    # Subscriber 생성
-                    # print("subcribe")
-                    self.sub = self.create_subscription(Float32MultiArray, '/model_out', self.callback, 1)
-
-                else:
-                    self.get_logger().warn("Calibration parameter is empty or None.")
-                    raise Exception("Empty Parameter")
-            except Exception as e:
-                self.get_logger().error(f"Calibration points not found or invalid: {e}")
-                self.disable_torque_all()
-                return
-
-        self.initialized = True
-
-
-    def __init_dxl(self):
-        # Port and packet handler
-        try: self.portHandler.clearPort()
-        except: pass
-        try: self.portHandler.closePort()
-        except: pass
-
-        self.portHandler   = dxl.PortHandler(DEVICENAME)
-        self.packetHandler = dxl.PacketHandler(PROTOCOL_VERSION)
-        self.groupSyncWrite = dxl.GroupSyncWrite(self.portHandler, self.packetHandler, ADDR_XL330_GOAL_POSITION, LEN_GOAL_POSITION)
-        self.groupSyncRead = dxl.GroupSyncRead(self.portHandler, self.packetHandler, ADDR_XL330_PRESENT_POSITION, LEN_PRESENT_POSITION)
-        self.groupSyncReadstatus = dxl.GroupSyncRead(self.portHandler, self.packetHandler, HARDWARE_ERROR_STATE, 1)
-
-        for i in DXL_ID	 :
-            self.groupSyncRead.addParam(i)
-        self.groupSyncRead_current = dxl.GroupSyncRead(self.portHandler, self.packetHandler, PRESENT_CURRENT, 2)
-        
-        for i in DXL_ID_AA :
-            self.groupSyncRead_current.addParam(i)
-            self.groupSyncReadstatus.addParam(i)
-
-        for i in DXL_ID_FE :
-            self.groupSyncRead_current.addParam(i)
-            self.groupSyncReadstatus.addParam(i)
-
-
-        try: self.portHandler.clearPort()
-        except: pass
-        try: self.portHandler.closePort()
-        except: pass
-
-        if not self.portHandler.openPort():
-            raise RuntimeError("Failed to open port")
-        if not self.portHandler.setBaudRate(BAUDRATE):
-            raise RuntimeError("Failed to set baudrate")
-        
-        # Torque off all joint        
-        for i in DXL_ID	:
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_DISABLE)
-			
-		# Change Operating mode
-        for i in DXL_ID_AA :
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_OPERATING_MODE , CURRENT_POSITION_CONTROL_MODE)
-			
-        for i in DXL_ID_FE :
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_OPERATING_MODE , CURRENT_CONTROL_MODE) 
-
-        for i in range(4) : 
-            self.packetHandler.write2ByteTxRx(self.portHandler, DXL_ID_FE[i], ADDR_XL330_CURRENT_LIMIT , CurLimit_FE[i])
-
-
-        # AA joint Torque on and init pos
-        for idx, i in enumerate(DXL_ID_AA):
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
-            self.packetHandler.write4ByteTxRx(self.portHandler, i, ADDR_XL330_GOAL_POSITION , init_aa[idx])
-            
-        # FE joint Torque on and current init
-        for i in DXL_ID_FE:
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_DRIVING_MODE, 0)
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
-            self.packetHandler.write2ByteTxRx(self.portHandler, i, ADDR_XL330_GOAL_CURRENT, 40)
-
-        time.sleep(2.0)
-
-        for i in DXL_ID_FE:
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_DISABLE)
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_DRIVING_MODE, 1)
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
-
-        for i in range(4) :
-            init_fe[i] = self.packetHandler.read4ByteTxRx(self.portHandler, DXL_ID_FE[i],ADDR_XL330_PRESENT_POSITION)[0]
-            while init_fe[i] > 100000:
-                print(f"overflow! idx {DXL_ID_FE[i]}")
-                self.packetHandler.write1ByteTxRx(self.portHandler, DXL_ID_FE[i], ADDR_XL330_TORQUE_ENABLE , TORQUE_DISABLE)
-                self.packetHandler.reboot(self.portHandler, DXL_ID_FE[i])
-
-                self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_DRIVING_MODE, 0)
-                self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
-                self.packetHandler.write2ByteTxRx(self.portHandler, i, ADDR_XL330_GOAL_CURRENT, 40)
-                time.sleep(1.0)
-                
-                self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_DISABLE)
-                self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_DRIVING_MODE, 1)
-                self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
-                init_fe[i] = self.packetHandler.read4ByteTxRx(self.portHandler, DXL_ID_FE[i],ADDR_XL330_PRESENT_POSITION)[0]
-        print("="*100)
-        print(init_fe)
-        print("="*100)
-
-
-        
-        
-		
-        # FE joint Torque off and Change Operating Mode
-        for i in DXL_ID_FE:
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_DISABLE)
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_OPERATING_MODE , CURRENT_POSITION_CONTROL_MODE)
-            self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE , TORQUE_ENABLE)
-        
-
-
-    def callback(self, msg):
-
-        if not self.initialized:
-            self.get_logger().warn("Skipping callback: initialization not complete.")
-            return
-        # Convert incoming Float32MultiArray message to a NumPy array
-        if self.mode == "NN":
-            self.pre_time = time.time()
-            raw_data = np.array(msg.data)
-            # Compute flexion/extension (FE) based on calibration points
-            fe = self.compute_fe(raw_data)
-            # print("fe",fe)
-
-            # Compute abduction/adduction (AA) based on calibration points
-            aa = self.compute_aa(raw_data)
-            print("aa : ", aa)
-
-            # Apply rate limiting (delta clamp) to FE and AA
-            fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
-            aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
-
-            ############################### temporal for experiment########################
-            # fe_adjusted = fe
-            # aa_adjusted = aa
-            ###############################################################################
-
-            # Update previous state for next iteration
-            self.FE_prev = fe_adjusted.copy()
-            self.AA_prev = aa_adjusted.copy()
-
-            # Apply finger-collision avoidance adjustments to AA
-            # self.apply_collision_avoidance(aa_adjusted)
-            
-        elif self.mode == "base":
-            # combined = msg.data
-            raw_data = np.array(msg.data)
-            raw_data[0] = np.clip(raw_data[0] + 0.2,-0.5,0.5) # offset
-            aa = raw_data[:4]
-            fe = raw_data[4:8]
-
-            fe_adjusted = self.apply_delta_clamp(fe, self.FE_prev, self.FE_max_delta)
-            aa_adjusted = self.apply_delta_clamp(aa, self.AA_prev, self.AA_max_delta)
-        elif self.mode =="test":
-            if self.time < 30:
-                fe_adjusted =  [0.3 + 0.3*np.sin(self.time/60 * np.pi),0.3 + 0.3*np.sin(self.time/60 * np.pi), 0.3 + 0.3*np.sin(self.time/60 * np.pi),0.3 + 0.3*np.sin(self.time/60 * np.pi)]
-            else:
-                fe_adjusted= [0.6,0.6,0.6,0.6]
-            # fe_adjusted =  [0.6 + 0.6 *np.sin(0 * np.pi),0.6 + 0.6*np.sin(0 * np.pi),0.6 + 0.6 *np.sin(0* np.pi),0.6 + 0.6 *np.sin(0* np.pi)]
-            # fe_adjusted = np.zeros(4) 
-            # fe_adjusted[0] = 0.6
-            # fe_adjusted[3] = 0.6
-            aa_adjusted =  np.zeros(4)
-            if self.time < 50:
-                aa_adjusted[0] = 0.1
-                aa_adjusted[1] = 0.3
-                aa_adjusted[2] = -0.0
-                aa_adjusted[3] = -0.3
-            else:
-                print("change")
-                aa_adjusted[0] = 0.1
-                aa_adjusted[1] = 0.3 - min(0.1,0.1*(float(self.time)-50.0))
-                aa_adjusted[2] = -0.0 - min(0.1,0.1*(float(self.time)-50.0))
-                aa_adjusted[3] = -0.3 + min(0.1,0.066*(float(self.time)-50.0))
-
-            self.time +=1  
-            # print(time.time() - self.pre_time)
-            # self.pre_time = time.time()
-            # print(fe_adjusted)
-            
-
-            
-
-            
-
-        # Apply finger-collision avoidance adjustments to AA
-        # dxl_pos_result = self.groupSyncRead.txRxPacket()
-        # joint_pos = np.zeros(8)
-        
-        # for i in range(4) :
-            # print(self.groupSyncRead_current.getData(DXL_ID_AA[i], 126, 1))
-            # self.joint_currents[i] = self.groupSyncRead_current.getData(DXL_ID_AA[i], PRESENT_CURRENT, 2)
-            # joint_pos[i] = self.groupSyncRead.getData(DXL_ID_AA[i], 132, 4)
-            # if joint_pos[i] == 0.0:
-            #     print("check")
-
-
-                
-        # for i in range(4) :
-            # self.joint_currents[i+4] = self.groupSyncRead_current.getData(DXL_ID_FE[i], PRESENT_CURRENT, 1)
-            # joint_pos[i+4] = self.groupSyncRead.getData(DXL_ID_FE[i], 132, 4)
-            # if joint_pos[i] == 0.0:
-            #     print("check")
-        # if dxl_pos_result!= dxl.COMM_SUCCESS:
-        #     print("fail!")
-        # else:
-        #     # print(f"current pos \n {joint_pos}")
-        #     pass
-
-
-        # time.sleep(0.05)
-
-        # aa_adjusted = self.apply_collision_avoidance(aa_adjusted)
-        self.FE_prev = fe_adjusted.copy()
-        self.AA_prev = aa_adjusted.copy()
-        combined = np.concatenate((aa_adjusted, fe_adjusted)).astype(np.float64)
-            
-
-        # Concatenate AA and FE into a single command array
-        print("before motor",time.time() - self.pre_time)
-        self.pre_time = time.time()
-
-        
-        if self.submode == "real":
-            motor_value = self.joint_to_motor(combined)
-
-            # print("q2m",time.time() - self.pre_time)
-            # self.pre_time = time.time()
-
-            self.read_current()
-            # print("current",time.time() - self.pre_time)
-            # self.pre_time = time.time()
-            
-            self.send_to_motors(motor_value)
-            # print("motor",time.time() - self.pre_time)
-            # self.pre_time = time.time()
-        
-            int_data = motor_value.data
-            motor_value_float = [float(val) for val in int_data]
-            motor_float = Float32MultiArray()
-            motor_float.data = motor_value_float
-            self.motor_pub.publish(motor_float)
-        elif self.submode == "sim":
-            # Publish JointState message (unchanged as requested)
-            joint_8 = JointState()
-            joint_8.header = Header()
-            joint_8.header.stamp = self.get_clock().now().to_msg() # Added timestamp
-            if self.mode == "base":
-                combined = np.array(combined)
-            joint_8.position = combined.tolist()
-            self.pub.publish(joint_8)
-        
-
-        # print("motor",time.time() - self.pre_time)
-        # self.pre_time = time.time()
-        
-
-        
-    def compute_fe(self, raw):
-        """Compute flexion/extension values from raw sensor data."""
-        fe = np.zeros(4)
-        fe[0]  = 1.3 * (raw[4]    - self.init[4])    / (self.thumb[4] - self.init[4])
-        fe[1:] = 1.3 * (raw[5:]   - self.init[5:])   / (self.good[5:]  - self.init[5:])
-        return np.clip(fe, 0.0, 1.3)
-
-    def compute_aa(self, raw):
-        """Compute abduction/adduction values from raw sensor data."""
-        
-        diff = np.zeros(4)
-        diff[0]  = self.sphere[0] - self.init[0]
-        diff[1:] = self.extent[1:4] - self.init[1:4]
-        threshold = 10
-        denom = np.where(np.abs(diff) < threshold,
-                        np.sign(diff) * threshold,
-                        diff)
-        ratio = (raw[:4] - self.init[:4]) / np.abs(denom)
-        # ratio[2] = np.clip(ratio[2],-0.5,0.5)
-        # ratio = np.zeros(4)
-        # ratio[0] = 1
-        return np.clip(0.4 * ratio,-0.5,0.5)
+    # --------------------------------------------------------------------- #
+    # Basic ops
+    # --------------------------------------------------------------------- #
+    @staticmethod
+    def gelu(x):
+        # PyTorch GELU approximation
+        return 0.5 * x * (1.0 + erf(x / np.sqrt(2.0)))
 
     @staticmethod
-    def apply_delta_clamp(values, prev, max_delta):
-        """Limit the change rate between consecutive values."""
-        delta = np.clip(values - prev, -max_delta, max_delta)
-        return prev + delta
+    def leaky_relu(x, neg_slope=NEG_SLOPE):
+        return np.where(x >= 0, x, neg_slope * x)
 
-    def apply_collision_avoidance(self, aa):
-        """Prevent finger collisions by enforcing minimum margins."""
-        margin = self.collision_margin
-        # Index vs Middle
-        if aa[2] - aa[1] > margin:
-            aa[1] = aa[2] - margin
-            # self.get_logger().warn("Index AA clipped to avoid collision")
-        # Ring vs Middle
-        if aa[3] - aa[2] > margin:
-            aa[3] = aa[2] + margin
-            # self.get_logger().warn("Ring AA clipped to avoid collision")
-        return aa
-    
-    def joint_to_motor(self,q_pos):  # TODO : check the logic after param tuning
-        # self.get_logger().info("motor callback")
-        for i in range(4):
-            # if q_pos[i+4] < 0.5:
-            desired_pos_fe[i] = init_fe[i] + int((ps_fe[i,2]-ps_fe[i,0]) * q_pos[i+4]) # 1 / 1.3
-            # else:
-            #     desired_pos_fe[i] = init_fe[i] + int((ps_fe[i,2]-ps_fe[i,1]) * (q_pos[i+4] -0.5) * 1.25 + ps_fe[i,1]) - ps_fe[i,0] # 1 / 1.3
-            # print(desired_pos_fe)
-            desired_pos_aa[i] = init_aa[i] + int((ps_aa[i,2]-ps_aa[i,0]) * (q_pos[i]))      
+    def linear(self, x, prefix):
+        """
+        Applies Linear layer: xW^T + b
+        """
+        w = self.params[prefix + '.weight']
+        b = self.params[prefix + '.bias']
+        return np.dot(x, w.T) + b
 
-        if q_pos[0] > 0:    
-            desired_pos_aa[0] = init_aa[0] + int(ps_aa[0,1]) + 2 * int((ps_aa[0,2]-ps_aa[0,1]) * (q_pos[0]))
-        elif q_pos[0] < 0:
-            desired_pos_aa[0] = init_aa[0] + int(ps_aa[0,1]) + 2 * int((ps_aa[0,1]-ps_aa[0,0]) * (q_pos[0]))
+    # --------------------------------------------------------------------- #
+    # Positional encoding
+    # --------------------------------------------------------------------- #
+    @staticmethod
+    def position_encoding(x, num_freqs):
+        """
+        x: ndarray [..., D]
+        returns ndarray [..., D * 2 * num_freqs]
+        """
+        # freqs: (L,)
+        freqs = (2.0 ** np.arange(num_freqs, dtype=x.dtype)) * np.pi 
+        x_exp = x[..., None] * freqs                                       # [..., D, L]
+        sin   = np.sin(x_exp)
+        cos   = np.cos(x_exp)
+        pe    = np.concatenate([sin, cos], axis=-1)                        # [..., D, 2L]
         
-        motor_values = Int32MultiArray()
+        # Flatten last 2 dims: (..., D * 2L)
+        new_shape = x.shape[:-1] + (-1,)
+        return pe.reshape(new_shape)
 
-        # print("motor",desired_pos_fe)
-        
-        motor_values.data = desired_pos_aa + desired_pos_fe
-        
-        return motor_values
-    
-    def send_to_motors(self, motor_msg):
+    # --------------------------------------------------------------------- #
+    # Module: FiLM Interaction (New)
+    # --------------------------------------------------------------------- #
+    def film_interaction(self, features, condition):
         """
-        Send motor positions to all AA and FE Dynamixel joints.
+        Mimics FiLMInteraction module.
+        features:  [B, gsd_dim]
+        condition: [B, cond_dim] (orientation)
         """
-        with self.lock:
-            self.groupSyncWrite.clearParam()
-            data = motor_msg.data
-            
-            # Pack AA joint positions (first 4 entries)
-            for i in range(4):
-                pos = int(data[i])
-                param = [
-                    dxl.DXL_LOBYTE(dxl.DXL_LOWORD(pos)),
-                    dxl.DXL_HIBYTE(dxl.DXL_LOWORD(pos)),
-                    dxl.DXL_LOBYTE(dxl.DXL_HIWORD(pos)),
-                    dxl.DXL_HIBYTE(dxl.DXL_HIWORD(pos))
-                ]
-                self.groupSyncWrite.addParam(DXL_ID_AA[i], param)
-            
-            # Pack FE joint positions (next 4 entries)
-            for i in range(4, 8):
-                pos = int(data[i])
-                param = [
-                    dxl.DXL_LOBYTE(dxl.DXL_LOWORD(pos)),
-                    dxl.DXL_HIBYTE(dxl.DXL_LOWORD(pos)),
-                    dxl.DXL_LOBYTE(dxl.DXL_HIWORD(pos)),
-                    dxl.DXL_HIBYTE(dxl.DXL_HIWORD(pos))
-                ]
-                self.groupSyncWrite.addParam(DXL_ID_FE[i-4], param)
-            
-            # Transmit packet
-            result = self.groupSyncWrite.txPacket()
-            # print(f"desired pos\n, {data}")
-            if result != dxl.COMM_SUCCESS:
-                self.get_logger().error(f"Dynamixel SyncWrite failed: {self.packetHandler.getTxRxResult(result)}")
-            
-    def read_current(self) :
-        '''
-        Check the current state of the motors
-        This function could makes delay for callback function (50hz->10hz)
-        Use this function when it is necessary
-        '''
-        dxl_current_result = self.groupSyncRead_current.txRxPacket()
-        dxl_error_result = self.groupSyncReadstatus.txRxPacket()
-        # joint_pos = np.zeros(8)
-        error_status = np.zeros(8)
-        for i in range(4) :
-            
-            self.joint_currents[i] = self.groupSyncRead_current.getData(DXL_ID_AA[i], PRESENT_CURRENT, 2)
-            error_status[i] = self.groupSyncReadstatus.getData(DXL_ID_AA[i], HARDWARE_ERROR_STATE, 1)
-            
-        for i in range(4) :
-            self.joint_currents[i+4] = self.groupSyncRead_current.getData(DXL_ID_FE[i], PRESENT_CURRENT, 1)
-            
-            error_status[i+4] = self.groupSyncReadstatus.getData(DXL_ID_FE[i], HARDWARE_ERROR_STATE, 1)
-        msg = Float32MultiArray()
+        # cond_mlp: Linear -> LeakyReLU -> Linear
+        x = self.linear(condition, 'film_interaction.cond_mlp.0')
+        x = self.leaky_relu(x)
+        modulation = self.linear(x, 'film_interaction.cond_mlp.2') # [B, gsd_dim * 2]
         
-        currents_float = self.joint_currents.astype(np.float32)
-        current_stat = currents_float / np.array(CurLimit*1.25)
+        # Split into gamma, beta
+        # modulation shape is (B, 200) if gsd_dim=100
+        gamma, beta = np.split(modulation, 2, axis=-1)
         
-        
-        msg.data = current_stat.tolist()
-        # print("topic",current_stat)
-        self.current_pub.publish(msg)
-    
-    def disable_torque_all(self):
+        # Apply FiLM: out = features * (1 + gamma) + beta
+        out = features * (1.0 + gamma) + beta
+        return out
+
+    # --------------------------------------------------------------------- #
+    # Module: BoneInteraction
+    # --------------------------------------------------------------------- #
+    def bone_interaction(self, x):
         """
-        Disable torque on all Dynamixel motors. This method is called on node shutdown.
+        Mimics BoneInteraction module.
+        Input x: [B, num_bones, dim]
+        Logic: Transpose -> Mixing MLP -> Transpose -> Residual
         """
-        if self.submode == 'sim' or not hasattr(self,'portHandler'):
+        # 1. Transpose: [B, num_bones, dim] -> [B, dim, num_bones]
+        x_T = x.transpose(0, 2, 1)
+
+        # 2. Mixing (MLP on num_bones dimension)
+        # interaction.mixing: Linear -> LeakyReLU -> Linear
+        h = self.linear(x_T, 'interaction.mixing.0')
+        h = self.leaky_relu(h)
+        delta = self.linear(h, 'interaction.mixing.2')
+
+        # 3. Transpose back + Residual
+        return x + delta.transpose(0, 2, 1)
+
+    # --------------------------------------------------------------------- #
+    # Forward pass
+    # --------------------------------------------------------------------- #
+    def forward(self, skeletons_data):
+        """
+        Input : skeletons_data (B, 60 + ORI_DIM)
+        Output: (B, 3)
+        """
+        B = skeletons_data.shape[0]
+
+        # 1. Split input (Orientation is at the end)
+        ori = skeletons_data[:, -ORI_DIM:]             # (B, ORI_DIM)
+        flat_joints = skeletons_data[:, :-ORI_DIM]     # (B, 60)
+
+        # --- Data Prep ---
+        skel = flat_joints.reshape(B, NUM_JOINTS, 3)                # (B, 20, 3)
+
+        # Bone endpoints
+        parents  = skel[:, bone_parents, :]                         # (B, 19, 3)
+        children = skel[:, bone_children, :]
+        Bk = np.concatenate([parents, children], axis=-1)           # (B, 19, 6)
+
+        # Positional Encodings
+        pe_bk = self.position_encoding(Bk, PE_FREQ_BK)              # (B, 19, 60)
+
+        eye_nb = np.eye(NUM_BONES, dtype=np.float32)
+        ok     = np.broadcast_to(eye_nb, (B, NUM_BONES, NUM_BONES)) # (B, 19, 19)
+        pe_ok  = self.position_encoding(ok, PE_FREQ_OK)             # (B, 19, 76)
+
+        # --- Global Spatial Descriptor (GSD) & FiLM ---
+        flat = skel.reshape(B, -1)                                  # (B, 60)
+        
+        # gsd_mlp: Linear->GELU->Linear->GELU->Linear
+        g = self.linear(flat, 'gsd_mlp.0')
+        g = self.gelu(g)
+        g = self.linear(g, 'gsd_mlp.2')
+        g = self.gelu(g)
+        g_feature = self.linear(g, 'gsd_mlp.4')                     # (B, 100)
+
+        # Apply FiLM (Modulate GSD with Orientation)
+        g_final = self.film_interaction(g_feature, ori)             # (B, 100)
+
+        # Expand to bone dimension
+        # (B, 100) -> (B, 1, 100) -> (B, 19, 100)
+        g_expanded = g_final[:, None, :].repeat(NUM_BONES, axis=1)
+
+        # Construct OE feature
+        # New: [pe_bk, pe_ok, g_expanded]
+        OE = np.concatenate([pe_bk, pe_ok, g_expanded], axis=-1)
+
+        # --- Bone Interaction ---
+        OE = self.bone_interaction(OE)
+
+        # --- Shared Backbone ---
+        # shared_backbone: Linear -> LeakyReLU -> Linear -> LeakyReLU
+        features = self.linear(OE, 'shared_backbone.0')
+        features = self.leaky_relu(features)
+        features = self.linear(features, 'shared_backbone.2')
+        features = self.leaky_relu(features)                        # (B, 19, hidden_dim)
+
+        # --- Lightweight Heads ---
+        out1 = self.linear(features, 'head1') # (B, 19, 1)
+        out2 = self.linear(features, 'head2') # (B, 19, 1)
+        out3 = self.linear(features, 'head3') # (B, 19, 1)
+
+        # --- Pooling along bone dim ---
+        o1 = out1.squeeze(-1) # (B, 19)
+        o2 = out2.squeeze(-1)
+        o3 = out3.squeeze(-1)
+
+        # pool layers: Linear(19, 1)
+        agg1 = self.linear(o1, 'pool1')
+        agg2 = self.linear(o2, 'pool2')
+        agg3 = self.linear(o3, 'pool3')
+
+        # Concat -> (B, 3)
+        return np.concatenate([agg1, agg2, agg3], axis=-1).astype(np.float32)
+
+
+# --------------------------------------------------------------------------- #
+# ROS Node Wrapper
+# --------------------------------------------------------------------------- #
+class InferenceNode(Node):
+    """ROS 2 node that embeds Skeleton2AngleNumPy and publishes 8-D predictions."""
+    def __init__(self):
+        super().__init__('skeleton2angle_inference')
+
+        self.declare_parameter('mode', 'model')
+        self.mode = self.get_parameter('mode').value
+
+        # Load model
+        try:
+            self.model = Skeleton2AngleNumPy(MODEL_WEIGHTS_PATH)
+            self.get_logger().info('✅ Loaded weights from %s' % MODEL_WEIGHTS_PATH)
+        except Exception as e:
+            self.get_logger().error('Model load failed: %s' % e)
+            self.model = None
             return
         
-        self.get_logger().info("Shutting down: disabling torque on all motors.")
+        # --- Butterworth filter design ----------------------------------
+        order      = 2        # 2nd-order IIR
+        fs         = 60.0     # Callback frequency (Hz)
+        fc         = 10.0     # cutoff frequency (Hz)
+        nyq        = 0.5 * fs
+        normal_cut = fc / nyq
+
+        self.b, self.a = butter(order, normal_cut, btype='low', analog=False)
+        zi_base        = lfilter_zi(self.b, self.a)
+        
+        # initialize filter state for 3d vector
+        self.zi_filter = [zi_base * 0.0 for _ in range(3)]
+        
+        # Exponential Moving Average parameters
+        self.ema_alpha = 0.1
+        self.ema       = None  # stores previous EMA value, shape (3,)
+
+        # ROS I/O
+        self.pub = self.create_publisher(Float32MultiArray, OUTPUT_TOPIC, 1)
+        self.pub_data = self.create_publisher(Float32MultiArray, '/model_out_data', 1)
+        self.subscription = self.create_subscription(
+            HandSyncData, 
+            INPUT_TOPIC,
+            self.callback,
+            1)
+        self.get_logger().info('Node ready - waiting for %s' % INPUT_TOPIC)
+
+    # --------------------------------------------------------------------- #
+    def _flatten_posearray(self, msg):
+        """PoseArray -> flat list of 60 floats (skip KEYWORDS joints)."""
+        data = []
+        for idx, p in enumerate(msg.poses):
+            if idx in KEYWORDS:
+                continue
+            data.extend([
+                p.position.x, p.position.y, p.position.z
+            ])
+        return np.asarray(data, np.float32)
+
+    # --------------------------------------------------------------------- #
+    def callback(self, msg):
+        if self.model is None:
+            return
+        
         
         try:
-            for i in DXL_ID:
-                self.packetHandler.write1ByteTxRx(self.portHandler, i, ADDR_XL330_TORQUE_ENABLE, TORQUE_DISABLE)
-                # self.packetHandler.reboot(self.portHandler, i)
-                print(f"disable idx :{i}")
-                time.sleep(0.1)
+            # 1. Flatten Joints
+            x_flat = self._flatten_posearray(msg.pose_array)[None, :]             
+            
+            # 2. Extract Orientation (Last ORI_DIM elements)
+            extra = np.array(msg.angles[-ORI_DIM:], dtype=np.float32).reshape(1, ORI_DIM)
+            
+            # 3. Concatenate
+            x_input = np.concatenate([x_flat, extra], axis=1) # (1, 60 + ORI_DIM)
+
+            if x_input.shape[1] != NUM_JOINTS * 3 + ORI_DIM:
+                self.get_logger().warn('Unexpected input length %d' % x_input.shape[1])
+                return
+
+            # 4. Inference
+            if self.mode == "model":
+                out = self.model.forward(x_input)                           
+                out_vec = out.flatten()                                     
+
+                # 5. Filtering (LPF)
+                filtered = np.zeros_like(out_vec)
+                for i in range(3):
+                    y, self.zi_filter[i] = lfilter(
+                        self.b, self.a,
+                        [out_vec[i]],
+                        zi=self.zi_filter[i]
+                    )
+                    filtered[i] = y[0]
+
+                # 6. EMA
+                if self.ema is None:
+                    self.ema = filtered.copy()
+                else:
+                    self.ema = (
+                        self.ema_alpha * filtered
+                        + (1.0 - self.ema_alpha) * self.ema
+                    )
+
+                # 7. Construct Output (Apply Rad->Deg conversion)
+                final_out = np.array(msg.angles[:-ORI_DIM], dtype=np.float32).reshape(8)
+                final_out[1:4] = self.ema * RADTODEG
+            elif self.mode == "baseline":
+                final_out = np.array(msg.angles[:-ORI_DIM], dtype=np.float32).reshape(8)
+                final_out[1:4] = final_out[1:4] * RADTODEG
+            else:
+                self.get_logger().warn(f'Unknown mode: {self.mode}')
+                return
+
+
+
+            # 8. Publish
+            # Combine prediction with raw orientation for debugging
+            data_out = np.concatenate([final_out, extra.squeeze()], axis=0)
+            
+            self.pub.publish(Float32MultiArray(data=final_out.tolist()))
+            self.pub_data.publish(Float32MultiArray(data=data_out.tolist()))
+
         except Exception as e:
-            self.get_logger().error(f"Failed to disable torque :{e}")
-    
-    def recovery(self, msg):
-        '''
-        Function for revoting motors
-        This function is not fully developed
-        '''
-        # 1) Enter recovery mode: unsubscribe all callbacks
-        self.get_logger().info("[Recovery] start: unsubscribing callbacks")
-        if self.sub:
-            self.destroy_subscription(self.sub)
-        if self.recover:
-            self.destroy_subscription(self.recover)
+            self.get_logger().error('Inference error: %s' % e)
 
-        # 2) Reboot motors exclusively under lock; no other motor access should occur here
-        self.get_logger().info("[Recovery] rebooting motors under exclusive lock")
-        with self.lock:
-            dxl_current_result = self.groupSyncReadstatus.txRxPacket()
-            for motor_id in DXL_ID:
-                status = self.groupSyncReadstatus.getData(motor_id, HARDWARE_ERROR_STATE, 1)
-                
-                if status != 0:
-                    self.packetHandler.reboot(self.portHandler, motor_id)
-                    
-            self.disable_torque_all()
-        # 3) Other operations (e.g., hardware initialization, subscriptions) proceed without touching motors
-        self.get_logger().info("[Recovery] performing non-motor operations")
-        # Reinitialize hardware interfaces (does not write to motors)
-        self.__init_dxl()
-
-        # 4) Recreate subscriptions and log completion
-        if self.mode == "base":
-             self.sub = self.create_subscription(Float32MultiArray, '/baseline', self.callback, 1)
-        else:
-             self.sub = self.create_subscription(Float32MultiArray, '/model_out', self.callback, 1)
-        
-        self.recover = self.create_subscription(Int16, '/recover', self.recovery, self.qos_profile)
-        
-        
-        self.get_logger().info("[Recovery] complete: callbacks resumed")
-        
-
+# --------------------------------------------------------------------------- #
 def main(args=None):
     rclpy.init(args=args)
-    
-    if len(sys.argv) > 1:
-        mode = sys.argv[1]
-    else:
-        mode = None
-    
-    node = Finalnode(mode=mode)
-    
+    node = InferenceNode()
     try:
-        node.get_parameter_from_server()
         rclpy.spin(node)
     except KeyboardInterrupt:
-        print("shutdown by user")
+        pass
     finally:
-        print("shutdown")
-        # print(e)
-        if node.submode != 'sim':
-            print("torque off")
-            node.disable_torque_all()
-            time.sleep(1)
         node.destroy_node()
         rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
-
-    # node.disable_torque_all()
-        
-    # 1. still pose : basic pose
-    # 2. extend pose : extend every finger as much as possible
-    # 3. thumbs up pose : bend fingers except thumb
-    # 4. thumb bend pose : bend only thumb
-    # 5. sphere pose  : make sphere with hands
-
