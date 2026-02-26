@@ -321,7 +321,7 @@ class InferenceNode(Node):
                 final_out[1:4] = self.ema * RADTODEG
             elif self.mode == "baseline":
                 final_out = np.array(msg.angles[:-ORI_DIM], dtype=np.float32).reshape(8)
-                final_out[1:4] = final_out[1:4] * RADTODEG
+                final_out[1:4] = final_out[1:4] 
             else:
                 self.get_logger().warn(f'Unknown mode: {self.mode}')
                 return

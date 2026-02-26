@@ -155,6 +155,7 @@ void transformPoseArrayToBase(geometry_msgs::msg::PoseArray& poses)
 
 /**
  * Converts HMD coordinate frames to robot base coordinate frame for teleoperation with Jet.
+ * Currently this transform is only applied to tf poses. So the position of the tf and pose array of hands will be different on rviz display.
  */
 void transformHMDtoRobot(geometry_msgs::msg::TransformStamped& tfMsg, bool is_hmd, bool is_hand)
 {

@@ -24,7 +24,7 @@ bool HMD::processFrameIteration() {
         return false;
     }
 
-    // UpdateAllTrackers();
+    UpdateAllTrackers();
     rclcpp::Time now = node_->now();
     publishHMDPose(now);
 
@@ -34,7 +34,7 @@ bool HMD::processFrameIteration() {
     // uncomment this line to use left hand data for both hands
     // if (valid) leftHandToRightHand(pose_array);
 
-    computeJointAngles(now);
+    publishJointAngles(now);
     renderAndSubmitFrame(frameState);
 
     return true;
@@ -372,7 +372,8 @@ void HMD::publishJointAngles(const rclcpp::Time& stamp) {
     Eigen::Matrix3f rot_mat = q.toRotationMatrix();
 
     int base_idx = 2 * fingernum_; 
-
+    
+    // 6D pose representation for palm orientation (Zhou et al. 2019)
     // Row 0 (r00, r01)
     latest_angles[base_idx + 0] = rot_mat(0, 0);
     latest_angles[base_idx + 1] = rot_mat(0, 1);
@@ -388,7 +389,10 @@ void HMD::publishJointAngles(const rclcpp::Time& stamp) {
 
 
 
-    /* This part is for qpos publishing for position retargeting baseline comparison.
+    /* 
+    ===============================================================================
+    This part is for qpos publishing for position retargeting baseline comparison.
+    ===============================================================================
     
     //qpos Position Retargeting
 

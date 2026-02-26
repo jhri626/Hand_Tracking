@@ -26,3 +26,4 @@ tracker_tools/
 temp/
 
 !/images/**
+!/model/dataset/dataset.zip

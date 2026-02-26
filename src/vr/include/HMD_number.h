@@ -42,11 +42,11 @@ inline constexpr std::array<int, 26> kSpecificIndices = {
 // Index, middle, ring fingers only (metacarpal & intermediate)
 inline constexpr std::array<int, 6> FINGER_JOINT_INDICES = {
     XR_HAND_JOINT_INDEX_METACARPAL_EXT,
-    XR_HAND_JOINT_INDEX_PROXIMAL_EXT,
+    XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT,
     XR_HAND_JOINT_MIDDLE_METACARPAL_EXT,
-    XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT,
+    XR_HAND_JOINT_MIDDLE_INTERMEDIATE_EXT,
     XR_HAND_JOINT_RING_METACARPAL_EXT,
-    XR_HAND_JOINT_RING_PROXIMAL_EXT
+    XR_HAND_JOINT_RING_INTERMEDIATE_EXT
 };
 
 // Four tip joints (thumb, index, middle, ring)
